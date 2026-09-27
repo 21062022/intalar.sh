@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
-# =========================================================
-#        HAZAEL MORENO MULTI SCRIPT INSTALLER
+# ==============================================================================
+#        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v4.2
-# =========================================================
+#        PREMIUM SERVER EDITION v5.0
+# ==============================================================================
 
 set -o pipefail
 
-# =========================================================
-# COLORES
-# =========================================================
+# ==============================================================================
+# PALETA DE COLORES VIBRANTES Y NEÓN
+# ==============================================================================
 RESET="\e[0m"
 BOLD="\e[1m"
 DIM="\e[2m"
 
+# Básicos brillantes
 RED="\e[1;91m"
 GREEN="\e[1;92m"
 YELLOW="\e[1;93m"
@@ -23,98 +24,113 @@ CYAN="\e[1;96m"
 WHITE="\e[1;97m"
 GRAY="\e[1;90m"
 
+# Neones personalizados de alta fidelidad
 PINK="\e[38;5;213m"
 PURPLE="\e[38;5;141m"
 VIOLET="\e[38;5;177m"
 SKY="\e[38;5;117m"
 LIME="\e[38;5;154m"
 GOLD="\e[38;5;220m"
+NEON_BLUE="\e[38;5;39m"
+NEON_GREEN="\e[38;5;46m"
+NEON_PINK="\e[38;5;198m"
+NEON_ORANGE="\e[38;5;208m"
 
-# =========================================================
-# RUTAS Y VARIABLES
-# =========================================================
+# ==============================================================================
+# RUTAS Y DIRECTORIOS DEL SISTEMA
+# ==============================================================================
 DESTDIR="/usr/local/lib/bhttp"
 SERVER_PY="$DESTDIR/bhttp-server.py"
 UNIT="/etc/systemd/system/bhttp.service"
 BADVPN_UNIT="/etc/systemd/system/badvpn.service"
 SERVICE="bhttp"
 BADVPN_SERVICE="badvpn"
-CONFIG="/etc/bhttp/nullcore.conf"
-USERS_FILE="/etc/bhttp/cuentas.txt"
+CONFIG_DIR="/etc/bhttp"
+CONFIG="$CONFIG_DIR/nullcore.conf"
+USERS_FILE="$CONFIG_DIR/cuentas.txt"
 SCRIPT_PATH="/usr/local/bin/intalar.sh"
+ADM_BIN="/usr/local/bin/adm"
 CANDIDATOS=(8080 80 8443 443 2082 2095 8880 2052 3128)
 
 PUERTO=""
 SSHPORT=22
 BADVPN_PORT=7300
 
-# =========================================================
-# CONFIGURAR ACCESO RÁPIDO "adm"
-# =========================================================
+# ==============================================================================
+# CONFIGURACIÓN DEL COMANDO RÁPIDO "adm" Y AUTO-EJECUTABLE
+# ==============================================================================
 configurar_atajo_adm() {
-  # Copiar el script actual a /usr/local/bin/intalar.sh si no está ahí
+  # Copiar script principal a la ruta del sistema
   if [ "$0" != "$SCRIPT_PATH" ]; then
     cp "$0" "$SCRIPT_PATH" 2>/dev/null || true
     chmod +x "$SCRIPT_PATH"
   fi
 
-  # Agregar alias 'adm' al bashrc si no existe
-  if ! grep -q "alias adm=" /root/.bashrc 2>/dev/null; then
-    echo "alias adm='sudo bash $SCRIPT_PATH'" >> /root/.bashrc
-  fi
-  if [ -f /home/linuxuser/.bashrc ] && ! grep -q "alias adm=" /home/linuxuser/.bashrc 2>/dev/null; then
-    echo "alias adm='sudo bash $SCRIPT_PATH'" >> /home/linuxuser/.bashrc
-  fi
+  # Crear comando directo ejecutable en /usr/local/bin/adm
+  cat > "$ADM_BIN" << 'EOF'
+#!/usr/bin/env bash
+sudo bash /usr/local/bin/intalar.sh
+EOF
+  chmod +x "$ADM_BIN"
+
+  # Asegurar alias en perfiles de shell comunes
+  for rc in /root/.bashrc /home/*/.bashrc /root/.zshrc; do
+    if [ -f "$rc" ] || [ "$rc" = "/root/.bashrc" ]; then
+      touch "$rc" 2>/dev/null
+      sed -i '/alias adm=/d' "$rc" 2>/dev/null
+      echo "alias adm='sudo bash /usr/local/bin/intalar.sh'" >> "$rc"
+    fi
+  done
 }
 
-# =========================================================
-# FUNCIONES VISUALES
-# =========================================================
+# ==============================================================================
+# INTERFAZ VISUAL CYBERPUNK
+# ==============================================================================
 clear_screen() {
     clear 2>/dev/null || true
 }
 
 linea() {
-    echo -e "${GRAY}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo -e "${NEON_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 }
 
 titulo() {
     clear_screen
-    echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${CYAN}║${RESET} ${PINK}${BOLD}                 HAZAEL MORENO MULTI SCRIPT${RESET}            ${CYAN}║${RESET}"
-    echo -e "${CYAN}║${RESET} ${PURPLE}${BOLD}         BHTTP V.1 & BADVPN PROTOCOL v4.2${RESET}             ${CYAN}║${RESET}"
-    echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${RESET}"
-    echo
-    echo -e "${SKY}        🚀  TIGO Y CLARO NICARAGUA FULL EDITION  🚀${RESET}"
+    echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v5.0${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
+    echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• TUNELIZACIÓN MÁXIMA PRO 🚀${RESET}"
     echo
 }
 
 seccion() {
     echo
-    echo -e "${PURPLE}╔══════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${PURPLE}║${RESET} ${WHITE}${BOLD} $1${RESET}"
-    echo -e "${PURPLE}╚══════════════════════════════════════════════════════════════╝${RESET}"
+    echo -e "${PURPLE}┌──────────────────────────────────────────────────────────────────┐${RESET}"
+    echo -e "${PURPLE}│${RESET} ${WHITE}${BOLD} $1${RESET}"
+    echo -e "${PURPLE}└──────────────────────────────────────────────────────────────────┘${RESET}"
     echo
 }
 
-ok() { echo -e " ${GREEN}✔${RESET} ${WHITE}$1${RESET}"; }
-info() { echo -e " ${CYAN}◆${RESET} ${WHITE}$1${RESET}"; }
-fail() { echo -e " ${RED}✖${RESET} ${WHITE}$1${RESET}"; }
+ok() { echo -e " ${NEON_GREEN}✔ [ÉXITO]${RESET} ${WHITE}$1${RESET}"; }
+info() { echo -e " ${SKY}◆ [INFO]${RESET} ${WHITE}$1${RESET}"; }
+fail() { echo -e " ${RED}✖ [ERROR]${RESET} ${WHITE}$1${RESET}"; }
 
 pausa() {
     echo
-    read -r -p " Presiona Enter para continuar..."
+    echo -e "${GRAY} Presiona ${NEON_GREEN}[Enter]${GRAY} para regresar al panel principal...${RESET}"
+    read -r
 }
 
 check_root() {
   if [ "$(id -u 2>/dev/null || echo 0)" != 0 ]; then
-    fail "Ejecuta como root: sudo bash $0"
+    fail "Este script debe ejecutarse como root: sudo bash $0"
     exit 2
   fi
 }
 
 cargar_config() {
-  mkdir -p /etc/bhttp
+  mkdir -p "$CONFIG_DIR"
   [ -f "$CONFIG" ] && source "$CONFIG"
   [ -z "${PUERTO:-}" ] && PUERTO=""
   [ -z "${SSHPORT:-}" ] && SSHPORT=22
@@ -122,7 +138,7 @@ cargar_config() {
 }
 
 guardar_config() {
-  mkdir -p /etc/bhttp
+  mkdir -p "$CONFIG_DIR"
   cat > "$CONFIG" <<EOF
 PUERTO=${PUERTO}
 SSHPORT=${SSHPORT}
@@ -130,12 +146,12 @@ BADVPN_PORT=${BADVPN_PORT}
 EOF
 }
 
-# =========================================================
-# INSTALAR BADVPN (PORT 7300)
-# =========================================================
+# ==============================================================================
+# INSTALACIÓN DE BADVPN (PUERTO 7300)
+# ==============================================================================
 instalar_badvpn() {
-    seccion "INSTALACIÓN DE BADVPN (PORT $BADVPN_PORT)"
-    info "Configurando BadVPN Udpgw..."
+    seccion "CONFIGURANDO PROTOCOLO BADVPN (PORT $BADVPN_PORT)"
+    info "Instalando dependencias de red..."
     
     apt-get update -y >/dev/null 2>&1
     apt-get install -y cmake g++ make wget curl badvpn 2>/dev/null || true
@@ -159,12 +175,12 @@ EOF
     systemctl daemon-reload
     systemctl enable "$BADVPN_SERVICE" >/dev/null 2>&1
     systemctl restart "$BADVPN_SERVICE"
-    ok "BadVPN configurado en puerto 127.0.0.1:$BADVPN_PORT"
+    ok "BadVPN activo y escuchando en 127.0.0.1:$BADVPN_PORT"
 }
 
-# =========================================================
-# CREAR USUARIO Y CREDENCIALES
-# =========================================================
+# ==============================================================================
+# CREAR Y REGISTRAR USUARIO
+# ==============================================================================
 crear_usuario() {
   local u="$1" p="$2" dias="$3"
   
@@ -177,12 +193,12 @@ crear_usuario() {
     info "El usuario '$u' ya existe. Actualizando credenciales..."
     sed -i "/^User: $u /d" "$USERS_FILE" 2>/dev/null
   else
-    useradd -M -s /bin/bash "$u" || { fail "No se pudo crear el usuario '$u'"; return 1; }
+    useradd -M -s /bin/bash "$u" || { fail "No se pudo crear el usuario en el sistema"; return 1; }
   fi
 
   local pass_hash
   pass_hash="$(openssl passwd -6 "$p" 2>/dev/null)"
-  usermod -p "$pass_hash" "$u" || { fail "Error al establecer la contraseña"; return 1; }
+  usermod -p "$pass_hash" "$u" || { fail "Error al establecer la contraseña cifrada"; return 1; }
   
   if [[ "$dias" =~ ^[0-9]+$ ]] && [ "$dias" -gt 0 ]; then
     chage -E "$(date -d "+${dias} days" +%Y-%m-%d 2>/dev/null || date -v +${dias}d +%Y-%m-%d 2>/dev/null)" "$u" 2>/dev/null
@@ -192,7 +208,7 @@ crear_usuario() {
     DIAS_FINAL="Ilimitado"
   fi
 
-  mkdir -p /etc/bhttp
+  mkdir -p "$CONFIG_DIR"
   echo "User: $u | Pass: $p | Dias: $DIAS_FINAL" >> "$USERS_FILE"
 
   USER_FINAL="$u"
@@ -209,19 +225,19 @@ ocupados() {
 }
 libre() { ! ocupados | grep -qx "$1"; }
 
-# =========================================================
-# INSTALAR BHTTP SERVER
-# =========================================================
+# ==============================================================================
+# INSTALAR SERVIDOR BHTTP
+# ==============================================================================
 instalar_servidor() {
   titulo
-  seccion "INSTALACIÓN DE PROTOCOLO BHTTP"
+  seccion "INSTALACIÓN DE BHTTP ENGINE"
   
-  command -v python3 >/dev/null 2>&1 || { fail "Falta python3. Instálalo: apt install -y python3"; pausa; return 1; }
+  command -v python3 >/dev/null 2>&1 || { fail "Python3 no está instalado. Ejecuta: apt install -y python3"; pausa; return 1; }
   
   local primer_libre=""
   for p in "${CANDIDATOS[@]}"; do libre "$p" && { primer_libre="$p"; break; }; done
   if [ -z "$PUERTO" ]; then
-    echo -ne " ${CYAN}◆${RESET} Puerto BHTTP [${primer_libre:-8080}]: "
+    echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el puerto para BHTTP [${primer_libre:-8080}]: "
     read -r PUERTO
     [ -z "$PUERTO" ] && PUERTO="${primer_libre:-8080}"
   fi
@@ -383,55 +399,56 @@ EOF
   systemctl enable "$SERVICE" >/dev/null 2>&1
   systemctl restart "$SERVICE"
   instalar_badvpn
+  configurar_atajo_adm
 
   if systemctl is-active --quiet "$SERVICE"; then
-    ok "Servicio BHTTP activo en el puerto $PUERTO"
+    ok "¡Servidor BHTTP configurado y operando en el puerto $PUERTO!"
     guardar_config
   else
-    fail "El servicio BHTTP no arrancó correctamente."
+    fail "El servicio BHTTP no logró inicializarse."
   fi
   pausa
 }
 
-# =========================================================
-# MENÚ DE USUARIOS
-# =========================================================
+# ==============================================================================
+# GESTIÓN DE USUARIOS Y CREDENCIALES
+# ==============================================================================
 menu_usuarios() {
   while true; do
     titulo
-    seccion "GESTIÓN DE USUARIOS"
-    echo -e "  ${GREEN}[1]${RESET}  Crear usuario para túnel (Manual / 4+ Caracteres)"
-    echo -e "  ${GREEN}[2]${RESET}  Listar usuarios y credenciales guardadas"
-    echo -e "  ${GREEN}[3]${RESET}  Cambiar contraseña de usuario"
-    echo -e "  ${GREEN}[4]${RESET}  Eliminar usuario"
-    echo -e "  ${RED}[0]${RESET}  Volver al menú principal"
+    seccion "CENTRO DE GESTIÓN DE USUARIOS Y TÚNELES"
+    echo -e "  ${NEON_GREEN}[1]${RESET}  Crear usuario rápido (Manual / 4+ Caracteres)"
+    echo -e "  ${NEON_GREEN}[2]${RESET}  Listar usuarios y credenciales activas"
+    echo -e "  ${NEON_GREEN}[3]${RESET}  Modificar contraseña de usuario"
+    echo -e "  ${NEON_GREEN}[4]${RESET}  Eliminar usuario del sistema"
+    echo -e "  ${RED}[0]${RESET}  Regresar al menú principal"
     linea
-    echo -ne " ${CYAN}◆${RESET} Selecciona una opción: "
+    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción: "
     read -r op
     case $op in
       1)
         echo
-        echo -ne " ${CYAN}◆${RESET} Nombre de usuario: "
+        echo -ne " ${SKY}◆${RESET} Nombre de usuario: "
         read -r nu
-        echo -ne " ${CYAN}◆${RESET} Contraseña (mínimo 4 caracteres): "
+        echo -ne " ${SKY}◆${RESET} Contraseña (mínimo 4 caracteres): "
         read -r np
-        echo -ne " ${CYAN}◆${RESET} Días de duración activa (ej. 30): "
+        echo -ne " ${SKY}◆${RESET} Días de vigencia (ej. 30): "
         read -r nd
         
         if [ ${#np} -lt 4 ]; then
-          fail "Error: La contraseña debe tener al menos 4 caracteres."
+          fail "La contraseña es muy corta. Debe tener mínimo 4 caracteres."
         else
           if crear_usuario "$nu" "$np" "$nd"; then
             local IP_PUB
             IP_PUB="$(curl -fsS --max-time 3 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
             echo
-            ok "¡USUARIO CREADO CON ÉXITO!"
+            ok "¡CUENTA CREADA Y CONFIGURADA EXITOSAMENTE!"
             linea
-            echo -e "    ${WHITE}IP Servidor :${RESET} ${GREEN}${IP_PUB}${RESET}"
-            echo -e "    ${WHITE}Puerto BHTTP:${RESET} ${GREEN}${PUERTO:-8080}${RESET}"
-            echo -e "    ${WHITE}Usuario     :${RESET} ${GREEN}${USER_FINAL}${RESET}"
-            echo -e "    ${WHITE}Contraseña  :${RESET} ${GREEN}${PASS_FINAL}${RESET}"
-            echo -e "    ${WHITE}BadVPN Port :${RESET} ${GREEN}${BADVPN_PORT}${RESET}"
+            echo -e "    ${WHITE}Servidor IP  :${RESET} ${NEON_GREEN}${IP_PUB}${RESET}"
+            echo -e "    ${WHITE}Puerto BHTTP :${RESET} ${NEON_GREEN}${PUERTO:-8080}${RESET}"
+            echo -e "    ${WHITE}Usuario      :${RESET} ${NEON_GREEN}${USER_FINAL}${RESET}"
+            echo -e "    ${WHITE}Contraseña   :${RESET} ${NEON_GREEN}${PASS_FINAL}${RESET}"
+            echo -e "    ${WHITE}Puerto BadVPN:${RESET} ${NEON_GREEN}${BADVPN_PORT}${RESET}"
             linea
           fi
         fi
@@ -439,122 +456,155 @@ menu_usuarios() {
         ;;
       2)
         echo
-        seccion "LISTA DE CREDENCIALES DE USUARIOS"
+        seccion "REGISTRO DE CREDENCIALES ACTIVAS"
         if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
           local IP_PUB
           IP_PUB="$(curl -fsS --max-time 3 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
-          echo -e "  ${WHITE}IP del Servidor:${RESET} ${GREEN}${IP_PUB}${RESET} | ${WHITE}Puerto:${RESET} ${GREEN}${PUERTO:-8080}${RESET}"
+          echo -e "  ${WHITE}IP Servidor:${RESET} ${NEON_GREEN}${IP_PUB}${RESET} | ${WHITE}Puerto BHTTP:${RESET} ${NEON_GREEN}${PUERTO:-8080}${RESET}"
           linea
           while IFS= read -r linea_usr; do
-            echo -e "  → ${linea_usr}"
+            echo -e "  🚀 ${CYAN}${linea_usr}${RESET}"
           done < "$USERS_FILE"
         else
-          info "No hay usuarios registrados en el registro del script todavía."
+          info "Aún no hay cuentas registradas en la base de datos."
         fi
         pausa
         ;;
       3)
         echo
-        echo -ne " ${CYAN}◆${RESET} Usuario: "
+        echo -ne " ${SKY}◆${RESET} Usuario a modificar: "
         read -r nu
-        echo -ne " ${CYAN}◆${RESET} Nueva contraseña (mínimo 4 caracteres): "
+        echo -ne " ${SKY}◆${RESET} Nueva contraseña (mínimo 4 caracteres): "
         read -r np
         if [ ${#np} -lt 4 ]; then
-          fail "Error: La contraseña debe tener al menos 4 caracteres."
+          fail "La contraseña debe tener mínimo 4 caracteres."
         elif id "$nu" >/dev/null 2>&1; then
           local pass_hash
           pass_hash="$(openssl passwd -6 "$np" 2>/dev/null)"
           usermod -p "$pass_hash" "$nu"
           sed -i "/^User: $nu /s/| Pass: [^|]* /| Pass: $np /" "$USERS_FILE" 2>/dev/null
-          ok "Contraseña actualizada correctamente."
+          ok "¡Contraseña actualizada con éxito!"
         else
-          fail "El usuario no existe."
+          fail "El usuario ingresado no existe en el sistema."
         fi
         pausa
         ;;
       4)
         echo
-        echo -ne " ${CYAN}◆${RESET} Usuario a eliminar: "
+        echo -ne " ${RED}◆${RESET} Usuario a eliminar permanentemente: "
         read -r nu
         if id "$nu" >/dev/null 2>&1; then
           userdel -r "$nu" 2>/dev/null
           sed -i "/^User: $nu /d" "$USERS_FILE" 2>/dev/null
-          ok "Usuario eliminado correctamente."
+          ok "Usuario eliminado por completo."
         else
           fail "El usuario no existe."
         fi
         pausa
         ;;
       0) return ;;
-      *) fail "Opción inválida"; pausa ;;
-    esac
-  done
-}
-
-# =========================================================
-# MENÚ PRINCIPAL
-# =========================================================
-menu_principal() {
-  while true; do
-    titulo
-    local estado
-    estado=$(systemctl is-active "$SERVICE" 2>/dev/null || echo "no instalado")
-    echo -e "  ${WHITE}Estado BHTTP:${RESET} ${GREEN}${estado}${RESET} | ${WHITE}Puerto:${RESET} ${GREEN}${PUERTO:-—}${RESET} | ${WHITE}BadVPN:${RESET} ${GREEN}${BADVPN_PORT}${RESET}"
-    linea
-    echo -e "  ${GREEN}[1]${RESET}  Instalar / Reinstalar BHTTP & BadVPN"
-    echo -e "  ${GREEN}[2]${RESET}  Gestión de Usuarios y Credenciales"
-    echo -e "  ${GREEN}[3]${RESET}  Control del Servicio"
-    echo -e "  ${GREEN}[4]${RESET}  Información del Sistema"
-    echo -e "  ${GREEN}[5]${RESET}  Cambiar puerto SSH backend"
-    echo -e "  ${RED}[6]${RESET}  Desinstalar"
-    echo -e "  ${RED}[0]${RESET}  Salir"
-    linea
-    echo -ne " ${CYAN}◆${RESET} Selecciona una opción [1-6, 0]: "
-    read -r opcion
-    case $opcion in
-      1) instalar_servidor ;;
-      2) menu_usuarios ;;
-      3) 
-        seccion "CONTROL DEL SERVICIO"
-        echo -e "  [1] Iniciar  |  [2] Detener  |  [3] Reiniciar  |  [4] Estado"
-        read -r st
-        case $st in
-          1) systemctl start "$SERVICE" "$BADVPN_SERVICE"; ok "Iniciados"; pausa ;;
-          2) systemctl stop "$SERVICE" "$BADVPN_SERVICE"; ok "Detenidos"; pausa ;;
-          3) systemctl restart "$SERVICE" "$BADVPN_SERVICE"; ok "Reiniciados"; pausa ;;
-          4) systemctl status "$SERVICE" --no-pager; pausa ;;
-        esac
-        ;;
-      4) 
-        titulo
-        seccion "DIAGNÓSTICO"
-        echo -e "  IP Pública   : $(curl -fsS --max-time 3 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
-        echo -e "  BHTTP Puerto : ${PUERTO:-No instalado}"
-        echo -e "  BadVPN Puerto: $BADVPN_PORT"
-        echo -e "  Comando rápido activo: 'adm'"
-        pausa
-        ;;
-      5)
-        echo -ne " ${CYAN}◆${RESET} Nuevo puerto SSH backend [${SSHPORT}]: "
-        read -r nuevo
-        [ -n "$nuevo" ] && SSHPORT="$nuevo" && guardar_config && ok "Actualizado"
-        pausa
-        ;;
-      6) 
-        systemctl stop "$SERVICE" "$BADVPN_SERVICE" 2>/dev/null
-        rm -f "$UNIT" "$BADVPN_UNIT" "$SERVER_PY"
-        sed -i "/alias adm=/d" /root/.bashrc 2>/dev/null
-        systemctl daemon-reload
-        ok "Desinstalado"
-        pausa
-        ;;
-      0) echo -e "\n  Saliendo...\n"; exit 0 ;;
       *) fail "Opción no válida"; pausa ;;
     esac
   done
 }
 
+# ==============================================================================
+# MENÚ PRINCIPAL
+# ==============================================================================
+menu_principal() {
+  configurar_atajo_adm
+  while true; do
+    titulo
+    local estado
+    estado=$(systemctl is-active "$SERVICE" 2>/dev/null || echo "inactivo")
+    if [ "$estado" = "active" ]; then
+      estado_color="${NEON_GREEN}ACTIVO 🟢${RESET}"
+    else
+      estado_color="${RED}INACTIVO 🔴${RESET}"
+    fi
+
+    echo -e "  ${WHITE}Estado Servidor:${RESET} ${estado_color}  |  ${WHITE}Puerto:${RESET} ${NEON_GREEN}${PUERTO:-No asignado}${RESET}"
+    echo -e "  ${WHITE}Comando Rápido :${RESET} ${NEON_PINK}adm${RESET} (Escríbelo en cualquier momento)"
+    linea
+    echo -e "  ${NEON_GREEN}[1]${RESET}  Instalar / Reinstalar BHTTP & BadVPN"
+    echo -e "  ${NEON_GREEN}[2]${RESET}  Gestión de Usuarios y Credenciales"
+    echo -e "  ${NEON_GREEN}[3]${RESET}  Panel de Control de Servicios (Iniciar / Parar)"
+    echo -e "  ${NEON_GREEN}[4]${RESET}  Diagnóstico General del Sistema"
+    echo -e "  ${NEON_GREEN}[5]${RESET}  Configurar puerto SSH Backend"
+    echo -e "  ${RED}[6]${RESET}  Destrucción Total / Desinstalar Script"
+    echo -e "  ${RED}[0]${RESET}  Salir del Panel"
+    linea
+    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción [1-6, 0]: "
+    read -r opcion
+    case $opcion in
+      1) instalar_servidor ;;
+      2) menu_usuarios ;;
+      3) 
+        seccion "CONTROL DE SERVICIOS SYSTEMD"
+        echo -e "  [1] Iniciar servicios"
+        echo -e "  [2] Detener servicios"
+        echo -e "  [3] Reiniciar servicios"
+        echo -e "  [4] Ver estado en tiempo real"
+        echo -ne "  Selecciona: "
+        read -r st
+        case $st in
+          1) systemctl start "$SERVICE" "$BADVPN_SERVICE"; ok "Servicios iniciados"; pausa ;;
+          2) systemctl stop "$SERVICE" "$BADVPN_SERVICE"; ok "Servicios detenidos"; pausa ;;
+          3) systemctl restart "$SERVICE" "$BADVPN_SERVICE"; ok "Servicios reiniciados"; pausa ;;
+          4) systemctl status "$SERVICE" --no-pager; pausa ;;
+        esac
+        ;;
+      4) 
+        titulo
+        seccion "DIAGNÓSTICO EN VIVO"
+        echo -e "  IP Pública   : $(curl -fsS --max-time 3 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
+        echo -e "  BHTTP Puerto : ${PUERTO:-No configurado}"
+        echo -e "  BadVPN Puerto: $BADVPN_PORT"
+        echo -e "  SSH Backend  : $SSHPORT"
+        echo -e "  Atajo 'adm'  : Activo en /usr/local/bin/adm"
+        pausa
+        ;;
+      5)
+        echo -ne " ${SKY}◆${RESET} Ingresa el nuevo puerto SSH backend [${SSHPORT}]: "
+        read -r nuevo
+        [ -n "$nuevo" ] && SSHPORT="$nuevo" && guardar_config && ok "Puerto SSH actualizado con éxito"
+        pausa
+        ;;
+      6) 
+        seccion "DESTRUCCIÓN TOTAL Y LIMPIEZA"
+        echo -ne " ${RED}⚠ ¿Estás seguro de eliminar por completo el script, servicios y accesos? (s/n): ${RESET}"
+        read -r confirmar
+        if [[ "$confirmar" =~ ^[sS]$ ]]; then
+          info "Deteniendo servicios..."
+          systemctl stop "$SERVICE" "$BADVPN_SERVICE" 2>/dev/null
+          systemctl disable "$SERVICE" "$BADVPN_SERVICE" 2>/dev/null
+          
+          info "Eliminando archivos de programa y directorios..."
+          rm -rf "$UNIT" "$BADVPN_UNIT" "$DESTDIR" "$CONFIG_DIR" 2>/dev/null
+          rm -f "$SCRIPT_PATH" "$ADM_BIN" 2>/dev/null
+          
+          info "Limpiando alias y accesos rápidos en terminales..."
+          for rc in /root/.bashrc /home/*/.bashrc /root/.zshrc; do
+            [ -f "$rc" ] && sed -i '/alias adm=/d' "$rc" 2>/dev/null
+          done
+          
+          systemctl daemon-reload
+          systemctl reset-failed
+          
+          ok "¡DESINSTALACIÓN Y DESTRUCCIÓN TOTAL COMPLETADA CON ÉXITO!"
+          echo -e " ${GRAY}El sistema ha quedado limpio. Saliendo...${RESET}"
+          exit 0
+        else
+          info "Operación de desinstalación cancelada."
+          pausa
+        fi
+        ;;
+      0) echo -e "\n ${NEON_GREEN}¡Hasta luego, Hazael! Saliendo del panel...${RESET}\n"; exit 0 ;;
+      *) fail "Opción inválida. Intenta nuevamente."; pausa ;;
+    esac
+  done
+}
+
 check_root
-configurar_atajo_adm
 cargar_config
 menu_principal
