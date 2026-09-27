@@ -528,7 +528,7 @@ menu_principal() {
     echo -e "  ${NEON_GREEN}[2]${RESET} Gestión de Usuarios y Credenciales"
     echo -e "  ${NEON_GREEN}[3]${RESET} Activar / Abrir Puerto Personalizado en Firewall"
     echo -e "  ${NEON_GREEN}[4]${RESET} Panel de Control de Servicios (Iniciar / Parar / Reiniciar)"
-    echo -e "  ${NEON_GREEN}[5]${RESET} Diagnóstico General del Sistema"
+    echo -e "  ${NEON_GREEN}[5]${RESET} Detalles de mi servidor vps"
     echo -e "  ${NEON_GREEN}[7]${RESET} Actualizar Script desde GitHub"
     echo -e "  ${RED}[6]${RESET} Destrucción Total / Desinstalar Script"
     echo -e "  ${RED}[0]${RESET} Salir del Panel"
