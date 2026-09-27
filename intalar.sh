@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v6.5 (Auto-Update & Fix Adm)
+#        PREMIUM SERVER EDITION v6.6 (Puerto Personalizable & Fix Adm)
 # ==============================================================================
 
 set -o pipefail
@@ -54,13 +54,11 @@ BADVPN_PORT=7300
 # CONFIGURACIÓN BLINDADA DE COMANDOS RÁPIDOS ("adm" / "admin")
 # ==============================================================================
 configurar_atajo_adm() {
-  # Copiar script actual a la ruta oficial si se ejecuta desde otro lado
   if [ "$0" != "$SCRIPT_PATH" ] && [ -f "$0" ]; then
     cp "$0" "$SCRIPT_PATH" 2>/dev/null || true
   fi
   chmod +x "$SCRIPT_PATH" 2>/dev/null || true
 
-  # Crear enlaces para 'adm' y 'admin' apuntando directo al script oficial
   cat > "$ADM_BIN" << 'EOF'
 #!/usr/bin/env bash
 exec sudo bash /usr/local/bin/intalar.sh "$@"
@@ -73,7 +71,6 @@ exec sudo bash /usr/local/bin/intalar.sh "$@"
 EOF
   chmod +x "$ADMIN_BIN"
 
-  # Inyectar alias y rutas en perfiles globales de bash/zsh
   for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
     if [ -f "$rc" ] || [ "$rc" = "/root/.bashrc" ]; then
       touch "$rc" 2>/dev/null
@@ -92,7 +89,6 @@ abrir_puerto_sistema() {
     local p_custom="$1"
     info "Aplicando reglas de red y firewall para el puerto $p_custom..."
 
-    # UFW
     if command -v ufw >/dev/null 2>&1; then
         ufw allow "$p_custom"/tcp >/dev/null 2>&1
         ufw allow "$BADVPN_PORT"/tcp >/dev/null 2>&1
@@ -100,7 +96,6 @@ abrir_puerto_sistema() {
         ufw reload >/dev/null 2>&1 || true
     fi
 
-    # IPTables
     if command -v iptables >/dev/null 2>&1; then
         iptables -A INPUT -p tcp --dport "$p_custom" -j ACCEPT 2>/dev/null || true
         iptables -A INPUT -p tcp --dport "$BADVPN_PORT" -j ACCEPT 2>/dev/null || true
@@ -110,7 +105,6 @@ abrir_puerto_sistema() {
         iptables -A INPUT -p tcp --dport 8080 -j ACCEPT 2>/dev/null || true
         iptables -A INPUT -p tcp --dport 8880 -j ACCEPT 2>/dev/null || true
         
-        # Guardar reglas persistentes
         if command -v netfilter-persistent >/dev/null 2>&1; then
             netfilter-persistent save >/dev/null 2>&1 || true
         elif [ -d /etc/iptables ]; then
@@ -130,7 +124,7 @@ titulo() {
     clear_screen
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v6.5${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v6.6${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• TUNELIZACIÓN MÁXIMA PRO 🚀${RESET}"
     echo
@@ -164,7 +158,7 @@ check_root() {
 cargar_config() {
   mkdir -p "$CONFIG_DIR"
   [ -f "$CONFIG" ] && source "$CONFIG"
-  [ -z "${PUERTO:-}" ] && PUERTO=""
+  [ -z "${PUERTO:-}" ] && PUERTO="8080"
   [ -z "${SSHPORT:-}" ] && SSHPORT=22
   [ -z "${BADVPN_PORT:-}" ] && BADVPN_PORT=7300
 }
@@ -217,16 +211,21 @@ libre() { ! ocupados | grep -qx "$1"; }
 
 instalar_servidor() {
   titulo
-  seccion "INSTALACIÓN DE BHTTP ENGINE Y RED"
+  seccion "INSTALACIÓN Y CONFIGURACIÓN DE PUERTO BHTTP"
   
   command -v python3 >/dev/null 2>&1 || { fail "Python3 no está instalado."; pausa; return 1; }
   
-  local primer_libre=""
-  for p in "${CANDIDATOS[@]}"; do libre "$p" && { primer_libre="$p"; break; }; done
-  if [ -z "$PUERTO" ]; then
-    echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el puerto principal BHTTP [${primer_libre:-8080}]: "
-    read -r PUERTO
-    [ -z "$PUERTO" ] && PUERTO="${primer_libre:-8080}"
+  local sugerido="${PUERTO:-8080}"
+  echo -e "  ${WHITE}Puerto BHTTP actual/sugerido:${RESET} ${NEON_GREEN}$sugerido${RESET}"
+  echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el nuevo puerto BHTTP (Presiona Enter para mantener $sugerido): "
+  read -r nuevo_puerto
+  
+  if [ -n "$nuevo_puerto" ]; then
+    if [[ "$nuevo_puerto" =~ ^[0-9]+$ ]] && [ "$nuevo_puerto" -gt 0 ] && [ "$nuevo_puerto" -le 65535 ]; then
+      PUERTO="$nuevo_puerto"
+    else
+      fail "Puerto inválido. Se mantendrá el puerto anterior: $sugerido"
+    fi
   fi
 
   abrir_puerto_sistema "$PUERTO"
@@ -463,15 +462,14 @@ menu_activar_puertos() {
   while true; do
     titulo
     seccion "ACTIVADOR Y APERTURA MANUAL DE PUERTOS (FIREWALL)"
-    echo -e "  ${WHITE}Abre cualquier puerto TCP (ej. 443, 80, 8989, 8880, etc.)${RESET}"
-    echo -e "  ${WHITE}Se aplican reglas en UFW, IPTables y BadVPN ($BADVPN_PORT).${RESET}"
+    echo -e "  ${WHITE}Abre cualquier puerto TCP adicional (ej. 443, 80, 8989, 8880, etc.)${RESET}"
     linea
-    echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el número de puerto a activar (Ej. 443): "
+    echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el número de puerto a abrir (Ej. 443): "
     read -r p_ingresado
 
     if [[ "$p_ingresado" =~ ^[0-9]+$ ]] && [ "$p_ingresado" -gt 0 ] && [ "$p_ingresado" -le 65535 ]; then
       abrir_puerto_sistema "$p_ingresado"
-      ok "¡El puerto $p_ingresado y BadVPN ($BADVPN_PORT) ya están abiertos y aceptando tráfico!"
+      ok "¡El puerto $p_ingresado ya está abierto y aceptando tráfico!"
     else
       fail "Número de puerto inválido."
     fi
@@ -491,8 +489,7 @@ actualizar_script() {
     seccion "ACTUALIZADOR AUTOMÁTICO DEL SCRIPT"
     info "Conectando con GitHub para buscar cambios..."
     
-    # ⚠️ REEMPLAZA ESTA URL CON LA RUTA RAW DE TU GITHUB OFICIAL ⚠️
-    local URL_GITHUB="https://raw.githubusercontent.com/TU_USUARIO/TU_REPOSITORIO/main/intalar.sh"
+    local URL_GITHUB="https://raw.githubusercontent.com/21062022/intalar.sh/main/intalar.sh"
     local TEMP_SCRIPT="/tmp/intalar_update.sh"
     
     if curl -fsSL "$URL_GITHUB" -o "$TEMP_SCRIPT"; then
@@ -508,7 +505,7 @@ actualizar_script() {
             fail "El archivo descargado de GitHub no tiene un formato válido."
         fi
     else
-        fail "No se pudo conectar con GitHub. Revisa el enlace URL en el script."
+        fail "No se pudo conectar con GitHub. Revisa tu conexión."
     fi
     pausa
 }
@@ -527,7 +524,7 @@ menu_principal() {
     echo -e "  ${WHITE}Estado Servidor:${RESET} ${estado_color}  |  ${WHITE}Puerto BHTTP:${RESET} ${NEON_GREEN}${PUERTO:-No asignado}${RESET}"
     echo -e "  ${WHITE}Comandos Rápidos:${RESET} ${NEON_PINK}adm${RESET} o ${NEON_PINK}admin${RESET}"
     linea
-    echo -e "  ${NEON_GREEN}[1]${RESET} Instalar / Reinstalar BHTTP & BadVPN"
+    echo -e "  ${NEON_GREEN}[1]${RESET} Instalar / Reinstalar o Cambiar Puerto BHTTP"
     echo -e "  ${NEON_GREEN}[2]${RESET} Gestión de Usuarios y Credenciales"
     echo -e "  ${NEON_GREEN}[3]${RESET} Activar / Abrir Puerto Personalizado en Firewall"
     echo -e "  ${NEON_GREEN}[4]${RESET} Panel de Control de Servicios (Iniciar / Parar / Reiniciar)"
