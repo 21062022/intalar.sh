@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v6.0
+#        PREMIUM SERVER EDITION v6.5 (Auto-Update & Fix Adm)
 # ==============================================================================
 
 set -o pipefail
@@ -43,11 +43,47 @@ CONFIG="$CONFIG_DIR/nullcore.conf"
 USERS_FILE="$CONFIG_DIR/cuentas.txt"
 SCRIPT_PATH="/usr/local/bin/intalar.sh"
 ADM_BIN="/usr/local/bin/adm"
+ADMIN_BIN="/usr/local/bin/admin"
 CANDIDATOS=(8080 80 8443 443 2082 2095 8880 2052 3128)
 
 PUERTO=""
 SSHPORT=22
 BADVPN_PORT=7300
+
+# ==============================================================================
+# CONFIGURACIÓN BLINDADA DE COMANDOS RÁPIDOS ("adm" / "admin")
+# ==============================================================================
+configurar_atajo_adm() {
+  # Copiar script actual a la ruta oficial si se ejecuta desde otro lado
+  if [ "$0" != "$SCRIPT_PATH" ] && [ -f "$0" ]; then
+    cp "$0" "$SCRIPT_PATH" 2>/dev/null || true
+  fi
+  chmod +x "$SCRIPT_PATH" 2>/dev/null || true
+
+  # Crear enlaces para 'adm' y 'admin' apuntando directo al script oficial
+  cat > "$ADM_BIN" << 'EOF'
+#!/usr/bin/env bash
+exec sudo bash /usr/local/bin/intalar.sh "$@"
+EOF
+  chmod +x "$ADM_BIN"
+
+  cat > "$ADMIN_BIN" << 'EOF'
+#!/usr/bin/env bash
+exec sudo bash /usr/local/bin/intalar.sh "$@"
+EOF
+  chmod +x "$ADMIN_BIN"
+
+  # Inyectar alias y rutas en perfiles globales de bash/zsh
+  for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
+    if [ -f "$rc" ] || [ "$rc" = "/root/.bashrc" ]; then
+      touch "$rc" 2>/dev/null
+      sed -i '/alias adm=/d' "$rc" 2>/dev/null
+      sed -i '/alias admin=/d' "$rc" 2>/dev/null
+      echo "alias adm='sudo bash /usr/local/bin/intalar.sh'" >> "$rc"
+      echo "alias admin='sudo bash /usr/local/bin/intalar.sh'" >> "$rc"
+    fi
+  done
+}
 
 # ==============================================================================
 # GESTIÓN GLOBAL DE FIREWALL (UFW E IPTABLES AUTOMÁTICO)
@@ -74,7 +110,7 @@ abrir_puerto_sistema() {
         iptables -A INPUT -p tcp --dport 8080 -j ACCEPT 2>/dev/null || true
         iptables -A INPUT -p tcp --dport 8880 -j ACCEPT 2>/dev/null || true
         
-        # Guardar reglas persistentes si existe netfilter-persistent
+        # Guardar reglas persistentes
         if command -v netfilter-persistent >/dev/null 2>&1; then
             netfilter-persistent save >/dev/null 2>&1 || true
         elif [ -d /etc/iptables ]; then
@@ -82,30 +118,6 @@ abrir_puerto_sistema() {
         fi
     fi
     ok "Puerto $p_custom y servicios activados en UFW e IPTables correctamente."
-}
-
-# ==============================================================================
-# CONFIGURACIÓN DEL COMANDO RÁPIDO "adm"
-# ==============================================================================
-configurar_atajo_adm() {
-  if [ "$0" != "$SCRIPT_PATH" ]; then
-    cp "$0" "$SCRIPT_PATH" 2>/dev/null || true
-    chmod +x "$SCRIPT_PATH"
-  fi
-
-  cat > "$ADM_BIN" << 'EOF'
-#!/usr/bin/env bash
-sudo bash /usr/local/bin/intalar.sh
-EOF
-  chmod +x "$ADM_BIN"
-
-  for rc in /root/.bashrc /home/*/.bashrc /root/.zshrc; do
-    if [ -f "$rc" ] || [ "$rc" = "/root/.bashrc" ]; then
-      touch "$rc" 2>/dev/null
-      sed -i '/alias adm=/d' "$rc" 2>/dev/null
-      echo "alias adm='sudo bash /usr/local/bin/intalar.sh'" >> "$rc"
-    fi
-  done
 }
 
 # ==============================================================================
@@ -118,7 +130,7 @@ titulo() {
     clear_screen
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v6.0${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v6.5${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• TUNELIZACIÓN MÁXIMA PRO 🚀${RESET}"
     echo
@@ -217,7 +229,6 @@ instalar_servidor() {
     [ -z "$PUERTO" ] && PUERTO="${primer_libre:-8080}"
   fi
 
-  # Ejecutar apertura automática de puertos
   abrir_puerto_sistema "$PUERTO"
 
   mkdir -p "$DESTDIR"
@@ -407,7 +418,6 @@ crear_usuario() {
     chage -E -1 "$u" 2>/dev/null; DIAS_FINAL="Ilimitado"
   fi
   echo "User: $u | Pass: $p | Dias: $DIAS_FINAL" >> "$USERS_FILE"
-  USER_FINAL="$u"; PASS_FINAL="$p"
 }
 
 menu_usuarios() {
@@ -447,21 +457,21 @@ menu_usuarios() {
 }
 
 # ==============================================================================
-# MENÚ PARA ACTIVAR / ABRIR PUERTOS MANUALMENTE (IPTABLES & UFW)
+# ACTIVADOR Y APERTURA MANUAL DE PUERTOS
 # ==============================================================================
 menu_activar_puertos() {
   while true; do
     titulo
     seccion "ACTIVADOR Y APERTURA MANUAL DE PUERTOS (FIREWALL)"
-    echo -e "  ${WHITE}Aquí puedes abrir cualquier puerto TCP (Ej. 443, 80, 8989, 8880, etc.)${RESET}"
-    echo -e "  ${WHITE}Se aplicarán automáticamente reglas UFW, IPTables y BadVPN ($BADVPN_PORT).${RESET}"
+    echo -e "  ${WHITE}Abre cualquier puerto TCP (ej. 443, 80, 8989, 8880, etc.)${RESET}"
+    echo -e "  ${WHITE}Se aplican reglas en UFW, IPTables y BadVPN ($BADVPN_PORT).${RESET}"
     linea
     echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el número de puerto a activar (Ej. 443): "
     read -r p_ingresado
 
     if [[ "$p_ingresado" =~ ^[0-9]+$ ]] && [ "$p_ingresado" -gt 0 ] && [ "$p_ingresado" -le 65535 ]; then
       abrir_puerto_sistema "$p_ingresado"
-      ok "¡El puerto $p_ingresado y el BadVPN ($BADVPN_PORT) ya están abiertos y aceptando tráfico TCP!"
+      ok "¡El puerto $p_ingresado y BadVPN ($BADVPN_PORT) ya están abiertos y aceptando tráfico!"
     else
       fail "Número de puerto inválido."
     fi
@@ -471,6 +481,36 @@ menu_activar_puertos() {
     read -r otro
     [[ "$otro" =~ ^[sS]$ ]] || break
   done
+}
+
+# ==============================================================================
+# ACTUALIZADOR AUTOMÁTICO DESDE GITHUB
+# ==============================================================================
+actualizar_script() {
+    titulo
+    seccion "ACTUALIZADOR AUTOMÁTICO DEL SCRIPT"
+    info "Conectando con GitHub para buscar cambios..."
+    
+    # ⚠️ REEMPLAZA ESTA URL CON LA RUTA RAW DE TU GITHUB OFICIAL ⚠️
+    local URL_GITHUB="https://raw.githubusercontent.com/TU_USUARIO/TU_REPOSITORIO/main/intalar.sh"
+    local TEMP_SCRIPT="/tmp/intalar_update.sh"
+    
+    if curl -fsSL "$URL_GITHUB" -o "$TEMP_SCRIPT"; then
+        if head -n 3 "$TEMP_SCRIPT" | grep -q "bash"; then
+            cp "$TEMP_SCRIPT" "$SCRIPT_PATH" 2>/dev/null
+            chmod +x "$SCRIPT_PATH"
+            configurar_atajo_adm
+            ok "¡Script actualizado a la versión más reciente con éxito!"
+            info "Reiniciando el panel automáticamente..."
+            sleep 2
+            exec sudo bash "$SCRIPT_PATH"
+        else
+            fail "El archivo descargado de GitHub no tiene un formato válido."
+        fi
+    else
+        fail "No se pudo conectar con GitHub. Revisa el enlace URL en el script."
+    fi
+    pausa
 }
 
 # ==============================================================================
@@ -485,17 +525,18 @@ menu_principal() {
     [ "$estado" = "active" ] && estado_color="${NEON_GREEN}ACTIVO 🟢${RESET}" || estado_color="${RED}INACTIVO 🔴${RESET}"
 
     echo -e "  ${WHITE}Estado Servidor:${RESET} ${estado_color}  |  ${WHITE}Puerto BHTTP:${RESET} ${NEON_GREEN}${PUERTO:-No asignado}${RESET}"
-    echo -e "  ${WHITE}Comando Rápido :${RESET} ${NEON_PINK}adm${RESET}"
+    echo -e "  ${WHITE}Comandos Rápidos:${RESET} ${NEON_PINK}adm${RESET} o ${NEON_PINK}admin${RESET}"
     linea
     echo -e "  ${NEON_GREEN}[1]${RESET} Instalar / Reinstalar BHTTP & BadVPN"
     echo -e "  ${NEON_GREEN}[2]${RESET} Gestión de Usuarios y Credenciales"
-    echo -e "  ${NEON_GREEN}[3]${RESET} Activar / Abrir Puerto Personalizado en Firewall (IPTables/UFW)"
+    echo -e "  ${NEON_GREEN}[3]${RESET} Activar / Abrir Puerto Personalizado en Firewall"
     echo -e "  ${NEON_GREEN}[4]${RESET} Panel de Control de Servicios (Iniciar / Parar / Reiniciar)"
     echo -e "  ${NEON_GREEN}[5]${RESET} Diagnóstico General del Sistema"
+    echo -e "  ${NEON_GREEN}[7]${RESET} Actualizar Script desde GitHub"
     echo -e "  ${RED}[6]${RESET} Destrucción Total / Desinstalar Script"
     echo -e "  ${RED}[0]${RESET} Salir del Panel"
     linea
-    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción [1-6, 0]: "
+    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción [1-7, 0]: "
     read -r opcion
     case $opcion in
       1) instalar_servidor ;;
@@ -520,9 +561,10 @@ menu_principal() {
         echo -e "  IP Pública   : $(curl -fsS --max-time 3 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
         echo -e "  BHTTP Puerto : ${PUERTO:-No configurado}"
         echo -e "  BadVPN Puerto: $BADVPN_PORT"
-        echo -e "  Atajo 'adm'  : Activo"
+        echo -e "  Atajo 'adm'  : Activo y Configurado"
         pausa
         ;;
+      7) actualizar_script ;;
       6) 
         seccion "DESTRUCCIÓN TOTAL"
         echo -ne " ${RED}⚠ ¿Eliminar todo por completo? (s/n): ${RESET}"
@@ -530,9 +572,9 @@ menu_principal() {
         if [[ "$confirmar" =~ ^[sS]$ ]]; then
           systemctl stop "$SERVICE" "$BADVPN_SERVICE" 2>/dev/null
           systemctl disable "$SERVICE" "$BADVPN_SERVICE" 2>/dev/null
-          rm -rf "$UNIT" "$BADVPN_UNIT" "$DESTDIR" "$CONFIG_DIR" "$SCRIPT_PATH" "$ADM_BIN" 2>/dev/null
-          for rc in /root/.bashrc /home/*/.bashrc /root/.zshrc; do
-            [ -f "$rc" ] && sed -i '/alias adm=/d' "$rc" 2>/dev/null
+          rm -rf "$UNIT" "$BADVPN_UNIT" "$DESTDIR" "$CONFIG_DIR" "$SCRIPT_PATH" "$ADM_BIN" "$ADMIN_BIN" 2>/dev/null
+          for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
+            [ -f "$rc" ] && sed -i '/alias adm=/d' "$rc" 2>/dev/null && sed -i '/alias admin=/d' "$rc" 2>/dev/null
           done
           systemctl daemon-reload
           ok "¡Destrucción total completada!"
