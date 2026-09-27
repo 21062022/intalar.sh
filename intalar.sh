@@ -141,30 +141,11 @@ EOF
 # =========================================================
 instalar_badvpn() {
     seccion "INSTALACIÓN DE BADVPN (PORT $BADVPN_PORT)"
-    info "Compilando o configurando BadVPN Udpgw..."
+    info "Configurando BadVPN Udpgw..."
     
-    # Dependencias de compilación básicas
     apt-get update -y >/dev/null 2>&1
-    apt-get install -y cmake g++ make wget curl >/dev/null 2>&1
+    apt-get install -y cmake g++ make wget curl badvpn 2>/dev/null || true
 
-    local src_dir="/tmp/badvpn-src"
-    mkdir -p "$src_dir"
-    cd "$src_dir" || return
-
-    if [ ! -f "badvpn-1.99.138.tar.gz" ]; then
-        wget -q https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/badvpn/badvpn-1.99.138.tar.gz || \
-        wget -q https://github.com/ambrop72/badvpn/archive/refs/tags/1.99.138.tar.gz -O badvpn-1.99.138.tar.gz 2>/dev/null || true
-    fi
-
-    # Si no se descarga por mirrors caídos, usamos una alternativa o instalador binario rápido
-    if command -v badvpn-udpgw >/dev/null 2>&1; then
-        ok "BadVPN ya se encuentra disponible en el sistema."
-    else
-        # Instalación alternativa ligera vía repositorio o clon si estuviera disponible, o binario directo
-        apt-get install -y badvpn 2>/dev/null || true
-    fi
-
-    # Crear servicio systemd para badvpn-udpgw en el puerto especificado
     cat > "$BADVPN_UNIT" <<EOF
 [Unit]
 Description=BadVPN UDP Gateway for Gaming/VOIP
@@ -188,7 +169,7 @@ EOF
     if systemctl is-active --quiet "$BADVPN_SERVICE"; then
         ok "BadVPN Udpgw corriendo correctamente en el puerto 127.0.0.1:$BADVPN_PORT"
     else
-        warn "BadVPN se configuró pero requiere verificar el binario 'badvpn-udpgw'."
+        warn "BadVPN configurado (verificar paquete en el sistema)."
     fi
 }
 
@@ -207,49 +188,22 @@ crear_usuario() {
     info "El usuario '$u' ya existe. Actualizando credenciales..."
   else
     useradd -M -s /bin/bash "$u" || { fail "No se pudo crear el usuario '$u'"; return 1; }
-    ok "Usuario '$u' creado correctamente."
   fi
 
-  # Uso de openssl passwd para evitar bloqueos por políticas estrictas de PAM en contraseñas cortas
   local pass_hash
   pass_hash="$(openssl passwd -6 "$p" 2>/dev/null)"
   usermod -p "$pass_hash" "$u" || { fail "Error al establecer la contraseña"; return 1; }
   
   if [[ "$dias" =~ ^[0-9]+$ ]] && [ "$dias" -gt 0 ]; then
     chage -E "$(date -d "+${dias} days" +%Y-%m-%d 2>/dev/null || date -v +${dias}d +%Y-%m-%d 2>/dev/null)" "$u" 2>/dev/null
-    ok "Cuenta configurada con vigencia de ${dias} días."
   else
     chage -E -1 "$u" 2>/dev/null
-    ok "Cuenta configurada sin límite de tiempo (Ilimitado)."
   fi
 
   USER_FINAL="$u"
   PASS_FINAL="$p"
   DIAS_FINAL="${dias:-Ilimitado}"
   return 0
-}
-
-# =========================================================
-# DIAGNÓSTICO SSH
-# =========================================================
-diagnostico_ssh() {
-  seccion "DIAGNÓSTICO DEL SISTEMA Y RED"
-  local cfg="/etc/ssh/sshd_config" fwd=""
-  [ -r "$cfg" ] && fwd="$(grep -iE '^[[:space:]]*AllowTcpForwarding' "$cfg" | tail -1 | awk '{print tolower($2)}')"
-  if [ "$fwd" = "no" ]; then
-    warn "AllowTcpForwarding = no -> El túnel podría presentar bloqueos"
-    echo "     Solución automática aplicada..."
-    sed -i 's/^[[:space:]]*AllowTcpForwarding.*/AllowTcpForwarding yes/' "$cfg"
-    systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
-  else
-    ok "AllowTcpForwarding habilitado correctamente."
-  fi
-  
-  if command -v ss >/dev/null 2>&1 && ss -tln 2>/dev/null | grep -qE ":$SSHPORT\b"; then
-    ok "Servidor SSH escuchando en el puerto $SSHPORT: OK"
-  else
-    fail "No se detecta servicio SSH activo en el puerto $SSHPORT"
-  fi
 }
 
 # =========================================================
@@ -288,16 +242,12 @@ instalar_servidor() {
     fail "El puerto $PUERTO ya se encuentra ocupado."; pausa; return 1
   fi
 
-  info "Puerto BHTTP seleccionado: $PUERTO | Backend SSH: 127.0.0.1:$SSHPORT"
-  
   mkdir -p "$DESTDIR"
   cat > "$SERVER_PY" << 'PYEOF'
 #!/usr/bin/env python3
 import argparse, asyncio, hashlib, struct, sys
 MAGIC = b"BHP1"
 LONGPOLL = 2.0
-def log(msg):
-    sys.stderr.write("[bhttp] %s\n" % msg); sys.stderr.flush()
 def keystream(sess, mode, seq, d, n):
     base = hashlib.sha256(sess + bytes([mode]) + seq.to_bytes(8, "big") + bytes([d]))
     out = bytearray(); c = 0
@@ -440,13 +390,10 @@ class Server:
                     self._send_data(writer, sess, mode, seq, chunk)
                     await writer.drain()
                 elif mode == 3:
-                    chunk_size = 1399
-                    count = 1
+                    chunk_size = 1399; count = 1
                     if len(payload) >= 6:
                         chunk_size = int.from_bytes(payload[0:4], "big")
                         count = payload[5]
-                    if chunk_size <= 0: chunk_size = 1399
-                    if count <= 0: count = 1
                     deadline = asyncio.get_running_loop().time() + LONGPOLL
                     for i in range(count):
                         chunk = await s.download(seq + i, chunk_size, deadline)
@@ -485,7 +432,6 @@ if __name__ == "__main__":
 PYEOF
   chmod +x "$SERVER_PY"
 
-  # Crear servicio systemd
   PYBIN="$(command -v python3)"
   cat > "$UNIT" <<EOF
 [Unit]
@@ -506,42 +452,15 @@ EOF
   systemctl enable "$SERVICE" >/dev/null 2>&1
   systemctl restart "$SERVICE"
   
-  # Instalar BadVPN automáticamente en conjunto
   instalar_badvpn
 
   if systemctl is-active --quiet "$SERVICE"; then
-    ok "Servicio BHTTP activo y escuchando en el puerto $PUERTO"
+    ok "Servicio BHTTP activo en el puerto $PUERTO"
     guardar_config
   else
     fail "El servicio BHTTP no arrancó correctamente."
-    journalctl -u "$SERVICE" -n 10 --no-pager
   fi
-  
   pausa
-}
-
-# =========================================================
-# DESINSTALAR PANEL
-# =========================================================
-desinstalar() {
-  titulo
-  seccion "DESINSTALACIÓN COMPLETA"
-  echo -ne " ${YELLOW}⚠${RESET} ¿Deseas eliminar todos los componentes BHTTP y BadVPN? (s/N): "
-  read -r conf
-  [[ "$conf" =~ ^[sS] ]] || return
-  
-  systemctl stop "$SERVICE" 2>/dev/null
-  systemctl disable "$SERVICE" 2>/dev/null
-  systemctl stop "$BADVPN_SERVICE" 2>/dev/null
-  systemctl disable "$BADVPN_SERVICE" 2>/dev/null
-  
-  rm -f "$UNIT" "$BADVPN_UNIT"
-  rm -rf "$DESTDIR" "$CONFIG"
-  systemctl daemon-reload 2>/dev/null
-  
-  ok "Panel desinstalado correctamente."
-  pausa
-  exit 0
 }
 
 # =========================================================
@@ -564,7 +483,7 @@ menu_usuarios() {
         echo
         echo -ne " ${CYAN}◆${RESET} Nombre de usuario: "
         read -r nu
-        echo -ne " ${CYAN}◆${RESET} Contraseña (mínimo 4 caracteres, letras o números): "
+        echo -ne " ${CYAN}◆${RESET} Contraseña (mínimo 4 caracteres): "
         read -r np
         echo -ne " ${CYAN}◆${RESET} Días de duración activa (ej. 30): "
         read -r nd
@@ -601,7 +520,7 @@ menu_usuarios() {
         elif id "$nu" >/dev/null 2>&1; then
           local pass_hash
           pass_hash="$(openssl passwd -6 "$np" 2>/dev/null)"
-          usermod -p "$pass_hash" "$nu" && ok "Contraseña actualizada correctamente." || fail "Error al actualizar contraseña."
+          usermod -p "$pass_hash" "$nu" && ok "Contraseña actualizada correctamente." || fail "Error al actualizar."
         else
           fail "El usuario no existe."
         fi
@@ -612,7 +531,7 @@ menu_usuarios() {
         echo -ne " ${CYAN}◆${RESET} Usuario a eliminar: "
         read -r nu
         if id "$nu" >/dev/null 2>&1; then
-          userdel -r "$nu" 2>/dev/null && ok "Usuario eliminado correctamente." || fail "Error al eliminar el usuario."
+          userdel -r "$nu" 2>/dev/null && ok "Usuario eliminado correctamente." || fail "Error al eliminar."
         else
           fail "El usuario no existe."
         fi
@@ -622,56 +541,6 @@ menu_usuarios() {
       *) fail "Opción inválida"; pausa ;;
     esac
   done
-}
-
-# =========================================================
-# CONTROL DE SERVICIO
-# =========================================================
-menu_servicio() {
-  while true; do
-    titulo
-    local estado
-    estado=$(systemctl is-active "$SERVICE" 2>/dev/null || echo "inactive")
-    seccion "CONTROL DEL SERVICIO (Estado: $estado)"
-    echo -e "  ${GREEN}[1]${RESET}  Iniciar servicio BHTTP"
-    echo -e "  ${GREEN}[2]${RESET}  Detener servicio BHTTP"
-    echo -e "  ${GREEN}[3]${RESET}  Reiniciar servicio BHTTP"
-    echo -e "  ${GREEN}[4]${RESET}  Ver estado detallado"
-    echo -e "  ${GREEN}[5]${RESET}  Ver logs en vivo"
-    echo -e "  ${RED}[0]${RESET}  Volver"
-    linea
-    echo -ne " ${CYAN}◆${RESET} Opción: "
-    read -r op
-    case $op in
-      1) systemctl start "$SERVICE" && ok "Servicio iniciado" || fail "Error"; pausa ;;
-      2) systemctl stop "$SERVICE" && ok "Servicio detenido" || fail "Error"; pausa ;;
-      3) systemctl restart "$SERVICE" && ok "Servicio reiniciado" || fail "Error"; pausa ;;
-      4) systemctl status "$SERVICE" --no-pager; pausa ;;
-      5) echo -e "${YELLOW}Ctrl+C para salir de los logs${N}"; sleep 1; journalctl -u "$SERVICE" -f ;;
-      0) return ;;
-      *) fail "Opción inválida"; pausa ;;
-    esac
-  done
-}
-
-# =========================================================
-# INFORMACIÓN DEL SISTEMA
-# =========================================================
-info_sistema() {
-  titulo
-  seccion "INFORMACIÓN Y DIAGNÓSTICO"
-  local IP
-  IP="$(curl -fsS --max-time 3 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
-  echo -e "  IP Pública     : ${GREEN}${IP}${RESET}"
-  echo -e "  Puerto BHTTP   : ${GREEN}${PUERTO:-No instalado}${RESET}"
-  echo -e "  Puerto BadVPN  : ${GREEN}${BADVPN_PORT}${RESET}"
-  echo -e "  Puerto SSH     : ${GREEN}${SSHPORT}${RESET}"
-  echo -e "  Estado BHTTP   : $(systemctl is-active $SERVICE 2>/dev/null || echo 'no instalado')"
-  echo -e "  Estado BadVPN  : $(systemctl is-active $BADVPN_SERVICE 2>/dev/null || echo 'no instalado')"
-  echo -e "  Sistema        : $(uname -srm)"
-  echo
-  diagnostico_ssh
-  pausa
 }
 
 # =========================================================
@@ -687,7 +556,7 @@ menu_principal() {
     echo -e "  ${GREEN}[1]${RESET}  Instalar / Reinstalar BHTTP & BadVPN"
     echo -e "  ${GREEN}[2]${RESET}  Gestión de Usuarios"
     echo -e "  ${GREEN}[3]${RESET}  Control del Servicio"
-    echo -e "  ${GREEN}[4]${RESET}  Información y Diagnóstico"
+    echo -e "  ${GREEN}[4]${RESET}  Información del Sistema"
     echo -e "  ${GREEN}[5]${RESET}  Cambiar puerto SSH backend"
     echo -e "  ${RED}[6]${RESET}  Desinstalar"
     echo -e "  ${RED}[0]${RESET}  Salir"
@@ -697,25 +566,44 @@ menu_principal() {
     case $opcion in
       1) instalar_servidor ;;
       2) menu_usuarios ;;
-      3) menu_servicio ;;
-      4) info_sistema ;;
-      5)
-        echo
-        echo -ne " ${CYAN}◆${RESET} Nuevo puerto SSH backend [${SSHPORT}]: "
-        read -r nuevo
-        [ -n "$nuevo" ] && SSHPORT="$nuevo" && guardar_config && ok "Puerto SSH actualizado a $SSHPORT"
+      3) 
+        seccion "CONTROL DEL SERVICIO"
+        echo -e "  [1] Iniciar  |  [2] Detener  |  [3] Reiniciar  |  [4] Estado"
+        read -r st
+        case $st in
+          1) systemctl start "$SERVICE" "$BADVPN_SERVICE"; ok "Iniciados"; pausa ;;
+          2) systemctl stop "$SERVICE" "$BADVPN_SERVICE"; ok "Detenidos"; pausa ;;
+          3) systemctl restart "$SERVICE" "$BADVPN_SERVICE"; ok "Reiniciados"; pausa ;;
+          4) systemctl status "$SERVICE" --no-pager; pausa ;;
+        esac
+        ;;
+      4) 
+        titulo
+        seccion "DIAGNÓSTICO"
+        echo -e "  IP Pública   : $(curl -fsS --max-time 3 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
+        echo -e "  BHTTP Puerto : ${PUERTO:-No instalado}"
+        echo -e "  BadVPN Puerto: $BADVPN_PORT"
         pausa
         ;;
-      6) desinstalar ;;
-      0) echo -e "\n  ${GRAY}Panel BHTTP finalizado.${RESET}\n"; exit 0 ;;
+      5)
+        echo -ne " ${CYAN}◆${RESET} Nuevo puerto SSH backend [${SSHPORT}]: "
+        read -r nuevo
+        [ -n "$nuevo" ] && SSHPORT="$nuevo" && guardar_config && ok "Actualizado"
+        pausa
+        ;;
+      6) 
+        systemctl stop "$SERVICE" "$BADVPN_SERVICE" 2>/dev/null
+        rm -f "$UNIT" "$BADVPN_UNIT" "$SERVER_PY"
+        systemctl daemon-reload
+        ok "Desinstalado"
+        pausa
+        ;;
+      0) echo -e "\n  Saliendo...\n"; exit 0 ;;
       *) fail "Opción no válida"; pausa ;;
     esac
   done
 }
 
-# =========================================================
-# INICIO
-# =========================================================
 check_root
 cargar_config
 menu_principal
