@@ -497,4 +497,202 @@ menu_usuarios() {
     linea
     echo -ne " ${NEON_ORANGE}◆${RESET} Opción: "
     read -r op
-    ca
+        case $op in
+      1)
+        echo -ne " Usuario: "; read -r nu
+        echo -ne " Contraseña: "; read -r np
+        echo -ne " Días de vigencia: "; read -r nd
+        if [ ${#np} -lt 4 ]; then
+            fail "Mínimo 4 caracteres para la contraseña"
+        else
+            crear_usuario "$nu" "$np" "$nd" && ok "¡Usuario $nu creado con éxito!"
+        fi
+        pausa
+        ;;
+      2)
+        monitor_usuarios_tiempo_real
+        ;;
+      3)
+        echo -ne " Usuario a eliminar: "; read -r nu
+        if userdel -r "$nu" 2>/dev/null; then
+            sed -i "/Usuario: $nu /d" "$USERS_FILE" 2>/dev/null
+            ok "Usuario $nu eliminado del sistema."
+        else
+            fail "No se pudo eliminar el usuario $nu o no existe."
+        fi
+        pausa
+        ;;
+      0) break ;;
+    esac
+  done
+}
+
+# ==============================================================================
+# ACTIVADOR Y APERTURA MANUAL DE PUERTOS
+# ==============================================================================
+menu_activar_puertos() {
+  while true; do
+    titulo
+    seccion "ACTIVADOR Y APERTURA MANUAL DE PUERTOS (FIREWALL)"
+    echo -e " ${BLANCO}Abre cualquier puerto TCP adicional (ej. 443, 80, 8989, 8880, etc.)${RESET}"
+    linea
+    echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el número de puerto a abrir (Ej. 443): "
+    read -r p_ingresado
+
+    if [[ "$p_ingresado" =~ ^[0-9]+$ ]] && [ "$p_ingresado" -gt 0 ] && [ "$p_ingresado" -le 65535 ]; then
+      abrir_puerto_sistema "$p_ingresado"
+      ok "¡El puerto $p_ingresado ya está abierto y aceptando tráfico!"
+    else
+      fail "Número de puerto inválido."
+    fi
+    
+    echo
+    echo -ne " ${CIELO}◆${RESET} ¿Quieres abrir otro puerto? (s/n): "
+    read -r otro
+    [[ "$otro" =~ ^[sS]$ ]] || break
+  done
+}
+
+# ==============================================================================
+# PANEL DE CONTROL DE SERVICIOS
+# ==============================================================================
+panel_servicios() {
+  while true; do
+    titulo
+    seccion "PANEL DE CONTROL DE SERVICIOS"
+    echo -e " ${NEON_GREEN}[1]${RESET} Iniciar BHTTP y BadVPN"
+    echo -e " ${NEON_GREEN}[2]${RESET} Detener BHTTP y BadVPN"
+    echo -e " ${NEON_GREEN}[3]${RESET} Reiniciar BHTTP y BadVPN"
+    echo -e " ${ROJO}[0]${RESET} Regresar"
+    linea
+    echo -ne " ${NEON_ORANGE}◆${RESET} Opción: "
+    read -r op_s
+    case $op_s in
+      1)
+        systemctl start bhttp badvpn 2>/dev/null
+        ok "Servicios iniciados correctamente."
+        pausa
+        ;;
+      2)
+        systemctl stop bhttp badvpn 2>/dev/null
+        ok "Servicios detenidos."
+        pausa
+        ;;
+      3)
+        systemctl restart bhttp badvpn 2>/dev/null
+        ok "Servicios reiniciados correctamente."
+        pausa
+        ;;
+      0) break ;;
+    esac
+  done
+}
+
+# ==============================================================================
+# DETALLES DEL SERVIDOR VPS
+# ==============================================================================
+detalles_vps() {
+    titulo
+    seccion "DETALLES DE MI SERVIDOR VPS"
+    
+    local ip_publica; ip_publica=$(curl -s https://api.ipify.org || hostname -I | awk '{print $1}')
+    local os_info; os_info=$(grep -w "PRETTY_NAME" /etc/os-release | cut -d= -f2 | tr -d '"')
+    local ram_info; ram_info=$(free -h | awk '/Mem:/ {print $3 "/" $2}')
+    local uptime_info; uptime_info=$(uptime -p | sed 's/up //')
+
+    echo -e " ${BLANCO}Dirección IP Pública:${RESET} ${NEON_GREEN}${BOLD}$ip_publica${RESET}"
+    echo -e " ${BLANCO}Sistema Operativo:${RESET}   ${CIELO}$os_info${RESET}"
+    echo -e " ${BLANCO}Uso de Memoria RAM:${RESET}  ${NEON_YELLOW}$ram_info${RESET}"
+    echo -e " ${BLANCO}Tiempo de Actividad:${RESET} ${MAGENTA}$uptime_info${RESET}"
+    pausa
+}
+
+# ==============================================================================
+# ACTUALIZADOR AUTOMÁTICO DESDE GITHUB
+# ==============================================================================
+actualizar_script() {
+    titulo
+    seccion "ACTUALIZADOR AUTOMÁTICO DEL SCRIPT"
+    info "Conectando con GitHub para buscar cambios..."
+    
+    local URL_GITHUB="https://raw.githubusercontent.com/21062022/intalar.sh/main/intalar.sh"
+    local TEMP_SCRIPT="/tmp/intalar_update.sh"
+    
+    if curl -fsSL "$URL_GITHUB" -o "$TEMP_SCRIPT"; then
+        if head -n 3 "$TEMP_SCRIPT" | grep -q "bash"; then
+            cp "$TEMP_SCRIPT" "$SCRIPT_PATH" 2>/dev/null
+            chmod +x "$SCRIPT_PATH"
+            configurar_atajo_adm
+            ok "¡Script actualizado a la versión más reciente con éxito!"
+            info "Reiniciando el panel automáticamente..."
+            pausa
+            exec bash "$SCRIPT_PATH"
+        else
+            fail "El archivo descargado de GitHub no parece ser un script Bash válido."
+        fi
+    else
+        fail "No se pudo conectar a GitHub para realizar la actualización."
+    fi
+    pausa
+}
+
+# ==============================================================================
+# DESINSTALADOR COMPLETO
+# ==============================================================================
+desinstalar_script() {
+    titulo
+    seccion "DESTRUCCIÓN TOTAL / DESINSTALAR SCRIPT"
+    echo -e " ${ROJO}${BOLD}⚠️ ¡ADVERTENCIA! Esto eliminará el servicio BHTTP, BadVPN y las configuraciones.${RESET}"
+    echo -ne " ${AMARILLO}¿Estás seguro de que deseas continuar? (s/n): ${RESET}"
+    read -r resp
+    if [[ "$resp" =~ ^[sS]$ ]]; then
+        systemctl stop bhttp badvpn 2>/dev/null || true
+        systemctl disable bhttp badvpn 2>/dev/null || true
+        rm -f "$UNIT" "$BADVPN_UNIT" "$ADM_BIN" "$ADMIN_BIN" "$SCRIPT_PATH" 2>/dev/null || true
+        rm -rf "$DESTDIR" "$CONFIG_DIR" 2>/dev/null || true
+        systemctl daemon-reload
+        ok "¡Script y servicios desinstalados por completo!"
+        exit 0
+    else
+        info "Operación cancelada."
+        pausa
+    fi
+}
+
+# ==============================================================================
+# MENÚ PRINCIPAL DEL PANEL
+# ==============================================================================
+menu_principal() {
+  check_root
+  cargar_config
+  configurar_atajo_adm
+
+  while true; do
+    titulo
+    echo -e " ${NEON_GREEN}[1]${RESET} Instalar / Reinstalar o Cambiar Puerto BHTTP"
+    echo -e " ${NEON_GREEN}[2]${RESET} Gestión de Usuarios y Credenciales"
+    echo -e " ${NEON_GREEN}[3]${RESET} Activar / Abrir Puerto Personalizado en Firewall"
+    echo -e " ${NEON_GREEN}[4]${RESET} Panel de Control de Servicios (Iniciar / Parar / Reiniciar)"
+    echo -e " ${NEON_GREEN}[5]${RESET} Detalles de mi servidor vps"
+    echo -e " ${NEON_GREEN}[6]${RESET} Actualizar Script desde GitHub"
+    echo -e " ${ROJO}[7]${RESET} Destrucción Total / Desinstalar Script"
+    echo -e " ${ROJO}[0]${RESET} Salir del Panel"
+    linea
+    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción [1-7, 0]: "
+    read -r opcion
+
+    case $opcion in
+      1) instalar_servidor ;;
+      2) menu_usuarios ;;
+      3) menu_activar_puertos ;;
+      4) panel_servicios ;;
+      5) detalles_vps ;;
+      6) actualizar_script ;;
+      7) desinstalar_script ;;
+      0) clear_screen; ok "¡Gracias por utilizar Hazael Moreno Multi Script!"; exit 0 ;;
+      *) fail "Opción inválida." ; sleep 1 ;;
+    esac
+  done
+}
+
+menu_principal
