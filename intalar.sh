@@ -1,9 +1,8 @@
-
 #!/usr/bin/env bash
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v6.6 (Puerto Personalizable & Fix Adm)
+#        PREMIUM SERVER EDITION v7.0 (Mejoras Pro & Sin Borrar Nada)
 # ==============================================================================
 
 set -o pipefail
@@ -50,6 +49,8 @@ CANDIDATOS=(8080 80 8443 443 2082 2095 8880 2052 3128)
 PUERTO=""
 SSHPORT=22
 BADVPN_PORT=7300
+BADVPN_STATUS="OFF"
+AUTOSTART_STATUS="OFF"
 
 # ==============================================================================
 # CONFIGURACIÓN BLINDADA DE COMANDOS RÁPIDOS ("adm" / "admin")
@@ -121,13 +122,22 @@ abrir_puerto_sistema() {
 clear_screen() { clear 2>/dev/null || true; }
 linea() { echo -e "${NEON_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"; }
 
+obtener_ip_publica() {
+    local ip_pub
+    ip_pub=$(curl -fsS --max-time 2 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
+    [ -z "$ip_pub" ] && ip_pub="127.0.0.1"
+    echo "$ip_pub"
+}
+
 titulo() {
     clear_screen
+    local ip_maquina
+    ip_maquina=$(obtener_ip_publica)
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v6.6${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.0${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
-    echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• TUNELIZACIÓN MÁXIMA PRO 🚀${RESET}"
+    echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
     echo
 }
 
@@ -162,6 +172,8 @@ cargar_config() {
   [ -z "${PUERTO:-}" ] && PUERTO="8080"
   [ -z "${SSHPORT:-}" ] && SSHPORT=22
   [ -z "${BADVPN_PORT:-}" ] && BADVPN_PORT=7300
+  [ -z "${BADVPN_STATUS:-}" ] && BADVPN_STATUS="OFF"
+  [ -z "${AUTOSTART_STATUS:-}" ] && AUTOSTART_STATUS="OFF"
 }
 
 guardar_config() {
@@ -170,11 +182,13 @@ guardar_config() {
 PUERTO=${PUERTO}
 SSHPORT=${SSHPORT}
 BADVPN_PORT=${BADVPN_PORT}
+BADVPN_STATUS=${BADVPN_STATUS}
+AUTOSTART_STATUS=${AUTOSTART_STATUS}
 EOF
 }
 
 # ==============================================================================
-# INSTALACIÓN DE BADVPN Y BHTTP
+# INSTALACIÓN DE BADVPN Y BHTTP (CON PUERTOS EN OF POR DEFECTO)
 # ==============================================================================
 instalar_badvpn() {
     apt-get update -y >/dev/null 2>&1
@@ -197,8 +211,8 @@ WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload
-    systemctl enable "$BADVPN_SERVICE" >/dev/null 2>&1
-    systemctl restart "$BADVPN_SERVICE"
+    systemctl disable "$BADVPN_SERVICE" >/dev/null 2>&1
+    systemctl stop "$BADVPN_SERVICE" >/dev/null 2>&1
 }
 
 ocupados() {
@@ -385,22 +399,19 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  systemctl enable "$SERVICE" >/dev/null 2>&1
-  systemctl restart "$SERVICE"
+  # Por defecto en OFF al instalar/configurar
+  systemctl disable "$SERVICE" >/dev/null 2>&1
+  systemctl stop "$SERVICE" >/dev/null 2>&1
   instalar_badvpn
   configurar_atajo_adm
 
-  if systemctl is-active --quiet "$SERVICE"; then
-    ok "¡Servidor BHTTP configurado y operando en el puerto $PUERTO!"
-    guardar_config
-  else
-    fail "El servicio BHTTP no logró inicializarse."
-  fi
+  ok "¡Servidor BHTTP configurado! (El servicio se mantiene en OFF hasta que lo enciendas)."
+  guardar_config
   pausa
 }
 
 # ==============================================================================
-# GESTIÓN DE USUARIOS
+# GESTIÓN DE USUARIOS MEJORADA (CREAR, DETALLES, ELIMINAR, EDITAR, EN LÍNEA)
 # ==============================================================================
 crear_usuario() {
   local u="$1" p="$2" dias="$3"
@@ -424,9 +435,11 @@ menu_usuarios() {
   while true; do
     titulo
     seccion "GESTIÓN DE USUARIOS Y CREDENCIALES"
-    echo -e "  ${NEON_GREEN}[1]${RESET} Crear usuario rápido"
-    echo -e "  ${NEON_GREEN}[2]${RESET} Listar credenciales"
-    echo -e "  ${NEON_GREEN}[3]${RESET} Eliminar usuario"
+    echo -e "  ${NEON_GREEN}[1]${RESET} Crear usuario BHTTP"
+    echo -e "  ${NEON_GREEN}[2]${RESET} Detalles de usuario existente (Panel)"
+    echo -e "  ${NEON_GREEN}[3]${RESET} Eliminar usuario por numeración"
+    echo -e "  ${NEON_GREEN}[4]${RESET} Editar Usuario (Añadir días / Cambiar contraseña)"
+    echo -e "  ${NEON_GREEN}[5]${RESET} Ver usuarios en línea (Actualización en vivo)"
     echo -e "  ${RED}[0]${RESET} Regresar"
     linea
     echo -ne " ${NEON_ORANGE}◆${RESET} Opción: "
@@ -442,13 +455,160 @@ menu_usuarios() {
         pausa
         ;;
       2)
-        seccion "LISTA DE USUARIOS"
-        [ -f "$USERS_FILE" ] && cat "$USERS_FILE" || info "Sin usuarios"
+        titulo
+        seccion "PANEL DE DETALLES DE USUARIOS EXISTENTES"
+        if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
+          local idx=1
+          while IFS= read -r linea_usu; do
+            local u_name u_pass u_dias
+            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
+            u_pass=$(echo "$linea_usu" | grep -oP 'Pass: \K[^|]+' | xargs)
+            u_dias=$(echo "$linea_usu" | grep -oP 'Dias: \K.*' | xargs)
+            
+            # Calcular días restantes exactos si es posible
+            local exp_date dias_restantes="N/A"
+            exp_date=$(chage -l "$u_name" 2>/dev/null | grep "Account expires" | cut -d: -f2 | xargs)
+            if [ "$exp_date" != "never" ] && [ -n "$exp_date" ]; then
+              local t_exp t_hoy
+              t_exp=$(date -d "$exp_date" +%s 2>/dev/null || echo 0)
+              t_hoy=$(date +%s)
+              if [ "$t_exp" -gt "$t_hoy" ]; then
+                dias_restantes=$(( (t_exp - t_hoy) / 86400 ))" días"
+              else
+                dias_restantes="Expirado"
+              fi
+            else
+              dias_restantes="Ilimitado"
+            fi
+
+            echo -e "  ${NEON_ORANGE}[$idx]${RESET} Usuario : ${NEON_GREEN}$u_name${RESET}"
+            echo -e "      Contraseña : ${WHITE}$u_pass${RESET}"
+            echo -e "      Vigencia   : ${CYAN}$u_dias${RESET}"
+            echo -e "      Restantes  : ${YELLOW}$dias_restantes${RESET}"
+            echo -e "  ----------------------------------------------------------"
+            idx=$((idx+1))
+          done < "$USERS_FILE"
+        else
+          info "No hay usuarios registrados."
+        fi
         pausa
         ;;
       3)
-        echo -ne " Usuario a eliminar: "; read -r nu
-        userdel -r "$nu" 2>/dev/null && sed -i "/^User: $nu /d" "$USERS_FILE" 2>/dev/null && ok "Eliminado"
+        titulo
+        seccion "ELIMINAR USUARIO POR NUMERACIÓN"
+        if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
+          local idx=1
+          declare -a arr_users
+          while IFS= read -r linea_usu; do
+            local u_name
+            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
+            arr_users[$idx]="$u_name"
+            echo -e "  ${NEON_ORANGE}[$idx]${RESET} $u_name"
+            idx=$((idx+1))
+          done < "$USERS_FILE"
+          echo
+          echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el número de usuario a eliminar (0 para cancelar): "
+          read -r num_del
+          if [[ "$num_del" =~ ^[0-9]+$ ]] && [ "$num_del" -gt 0 ] && [ -n "${arr_users[$num_del]:-}" ]; then
+            local target_user="${arr_users[$num_del]}"
+            userdel -r "$target_user" 2>/dev/null
+            sed -i "/^User: $target_user /d" "$USERS_FILE" 2>/dev/null
+            ok "¡Usuario $target_user eliminado con éxito!"
+          else
+            info "Operación cancelada o número inválido."
+          fi
+        else
+          info "No hay usuarios para eliminar."
+        fi
+        pausa
+        ;;
+      4)
+        titulo
+        seccion "EDITAR USUARIO (DIAS Y CONTRASEÑA)"
+        if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
+          local idx=1
+          declare -a arr_users
+          while IFS= read -r linea_usu; do
+            local u_name
+            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
+            arr_users[$idx]="$u_name"
+            echo -e "  ${NEON_ORANGE}[$idx]${RESET} $u_name"
+            idx=$((idx+1))
+          done < "$USERS_FILE"
+          echo
+          echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el número de usuario a editar: "
+          read -r num_edit
+          if [[ "$num_edit" =~ ^[0-9]+$ ]] && [ "$num_edit" -gt 0 ] && [ -n "${arr_users[$num_edit]:-}" ]; then
+            local target_user="${arr_users[$num_edit]}"
+            echo -ne " Nueva contraseña (deja en blanco para no cambiar): "
+            read -r n_pass
+            echo -ne " Añadir días de vigencia (ej. 30, deja en blanco para no cambiar): "
+            read -r n_dias
+            
+            # Extraer pass actual si no se cambia
+            local p_actual
+            p_actual=$(grep "^User: $target_user " "$USERS_FILE" | grep -oP 'Pass: \K[^|]+' | xargs)
+            [ -z "$n_pass" ] && n_pass="$p_actual"
+            
+            # Actualizar Linux user pass
+            local pass_hash; pass_hash="$(openssl passwd -6 "$n_pass" 2>/dev/null)"
+            usermod -p "$pass_hash" "$target_user" 2>/dev/null
+
+            if [[ "$n_dias" =~ ^[0-9]+$ ]] && [ "$n_dias" -gt 0 ]; then
+              chage -E "$(date -d "+${n_dias} days" +%Y-%m-%d 2>/dev/null || date -v +${n_dias}d +%Y-%m-%d 2>/dev/null)" "$target_user" 2>/dev/null
+              DIAS_FINAL="${n_dias} días"
+            else
+              DIAS_FINAL="Actualizado"
+            fi
+
+            sed -i "/^User: $target_user /d" "$USERS_FILE" 2>/dev/null
+            echo "User: $target_user | Pass: $n_pass | Dias: $DIAS_FINAL" >> "$USERS_FILE"
+            ok "¡Usuario $target_user actualizado correctamente!"
+          else
+            fail "Número inválido."
+          fi
+        else
+          info "No hay usuarios."
+        fi
+        pausa
+        ;;
+      5)
+        # Bucle en vivo actualizándose cada 5 segundos
+        clear
+        echo -e "${NEON_GREEN}=== MONITOREO DE USUARIOS EN LÍNEA (Actualiza cada 5s) ===${RESET}"
+        echo -e "${GRAY}Presiona [Ctrl + C] para salir de la vista en vivo.${RESET}\n"
+        while true; do
+          tput civis 2>/dev/null || true
+          echo -ne "\033[H\033[2J"
+          echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
+          echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}             ESTADO DE USUARIOS CONECTADOS EN VIVO${RESET}             ${NEON_PINK}║${RESET}"
+          echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}\n"
+          
+          if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
+            while IFS= read -r linea_usu; do
+              local u_name
+              u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
+              if [ -n "$u_name" ]; then
+                # Contar conexiones activas asociadas al usuario por procesos o sockets
+                local count=0
+                if command -v who >/dev/null 2>&1; then
+                  count=$(who | awk -v u="$u_name" '$1==u {print $1}' | wc -l)
+                fi
+                # Verificar conexiones netstat/ss por PID o sesiones activas de systemd/ssh
+                local sock_count
+                sock_count=$(ss -tnp 2>/dev/null | grep -i "$u_name" | wc -l)
+                [ "$sock_count" -gt "$count" ] && count="$sock_count"
+                
+                echo -e "  👤 Usuario: ${NEON_GREEN}${BOLD}$u_name${RESET} / ${NEON_ORANGE}$count en línea${RESET}"
+              fi
+            done < "$USERS_FILE"
+          else
+            info "No hay usuarios creados."
+          fi
+          echo -e "\n${GRAY}Actualizando en 5 segundos... (Ctrl+C para salir)${RESET}"
+          sleep 5
+        done
+        tput cnorm 2>/dev/null || true
         pausa
         ;;
       0) return ;;
@@ -479,6 +639,112 @@ menu_activar_puertos() {
     echo -ne " ${SKY}◆${RESET} ¿Deseas abrir otro puerto? (s/n): "
     read -r otro
     [[ "$otro" =~ ^[sS]$ ]] || break
+  done
+}
+
+# ==============================================================================
+# OPTIMIZAR VPS & BADVPN CONFIG (PUERTOS 7300 o 7200)
+# ==============================================================================
+menu_optimizar_vps() {
+  while true; do
+    titulo
+    seccion "OPTIMIZACIÓN DE RECURSOS & BADVPN GATEWAY"
+    echo -e "  ${WHITE}Estado Actual BadVPN:${RESET} [ ${NEON_ORANGE}$BADVPN_STATUS${RESET} ] (Puerto: $BADVPN_PORT)"
+    linea
+    echo -e "  ${NEON_GREEN}[1]${RESET} Refrescar / Limpiar memoria RAM y Caché del Sistema"
+    echo -e "  ${NEON_GREEN}[2]${RESET} Activar / Cambiar BadVPN (Puerto 7300)"
+    echo -e "  ${NEON_GREEN}[3]${RESET} Activar / Cambiar BadVPN (Puerto 7200)"
+    echo -e "  ${NEON_GREEN}[4]${RESET} Apagar BadVPN (OFF)"
+    echo -e "  ${RED}[0]${RESET} Regresar"
+    linea
+    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción: "
+    read -r opt_opt
+    case $opt_opt in
+      1)
+        info "Liberando búferes de caché y optimizando memoria RAM..."
+        sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+        swapoff -a && swapon -a 2>/dev/null || true
+        ok "¡Sistema optimizado y memoria refrescada con éxito!"
+        pausa
+        ;;
+      2)
+        BADVPN_PORT=7300
+        instalar_badvpn
+        systemctl enable "$BADVPN_SERVICE" >/dev/null 2>&1
+        systemctl restart "$BADVPN_SERVICE"
+        abrir_puerto_sistema "$BADVPN_PORT"
+        BADVPN_STATUS="ON (7300)"
+        guardar_config
+        ok "¡BadVPN activado en el puerto 7300!"
+        pausa
+        ;;
+      3)
+        BADVPN_PORT=7200
+        instalar_badvpn
+        systemctl enable "$BADVPN_SERVICE" >/dev/null 2>&1
+        systemctl restart "$BADVPN_SERVICE"
+        abrir_puerto_sistema "$BADVPN_PORT"
+        BADVPN_STATUS="ON (7200)"
+        guardar_config
+        ok "¡BadVPN activado en el puerto 7200!"
+        pausa
+        ;;
+      4)
+        systemctl stop "$BADVPN_SERVICE" 2>/dev/null
+        systemctl disable "$BADVPN_SERVICE" 2>/dev/null
+        BADVPN_STATUS="OFF"
+        guardar_config
+        ok "¡BadVPN apagado correctamente!"
+        pausa
+        ;;
+      0) return ;;
+    esac
+  done
+}
+
+# ==============================================================================
+# AUTO INICIAR SCRIPT EN TERMINAL (CONFIGURABLE ON/OFF)
+# ==============================================================================
+menu_autostart() {
+  while true; do
+    titulo
+    seccion "AUTO INICIAR SCRIPT AL ABRIR TERMINAL"
+    echo -e "  ${WHITE}Estado actual Auto-Iniciar:${RESET} [ ${NEON_ORANGE}$AUTOSTART_STATUS${RESET} ]"
+    echo -e "  ${GRAY}Si está en ON, al entrar por SSH entrará directo al panel.${RESET}"
+    echo -e "  ${GRAY}Si está en OFF, ingresarás normal y solo abrirás con 'adm'.${RESET}"
+    linea
+    echo -e "  ${NEON_GREEN}[1]${RESET} Encender (ON)"
+    echo -e "  ${NEON_GREEN}[2]${RESET} Apagar (OFF)"
+    echo -e "  ${RED}[0]${RESET} Regresar"
+    linea
+    echo -ne " ${NEON_ORANGE}◆${RESET} Opción: "
+    read -r as_op
+    case $as_op in
+      1)
+        AUTOSTART_STATUS="ON"
+        guardar_config
+        for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
+          if [ -f "$rc" ] || [ "$rc" = "/root/.bashrc" ]; then
+            sed -i '/intalar\.sh/d' "$rc" 2>/dev/null
+            echo "[[ $- == *i* ]] && [ -z \"\$TMUX\" ] && sudo bash $SCRIPT_PATH" >> "$rc"
+          fi
+        done
+        ok "¡Auto iniciar activado (ON)!"
+        pausa
+        ;;
+      2)
+        AUTOSTART_STATUS="OFF"
+        guardar_config
+        for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
+          if [ -f "$rc" ] || [ "$rc" = "/root/.bashrc" ]; then
+            sed -i '/intalar\.sh/d' "$rc" 2>/dev/null
+          fi
+        done
+        ok "¡Auto iniciar desactivado (OFF)!"
+        pausa
+        ;;
+      0) return ;;
+    esac
   done
 }
 
@@ -518,23 +784,29 @@ menu_principal() {
   configurar_atajo_adm
   while true; do
     titulo
-    local estado
+    local estado badvpn_est
     estado=$(systemctl is-active "$SERVICE" 2>/dev/null || echo "inactivo")
     [ "$estado" = "active" ] && estado_color="${NEON_GREEN}ACTIVO 🟢${RESET}" || estado_color="${RED}INACTIVO 🔴${RESET}"
 
-    echo -e "  ${WHITE}Estado Servidor:${RESET} ${estado_color}  |  ${WHITE}Puerto BHTTP:${RESET} ${NEON_GREEN}${PUERTO:-No asignado}${RESET}"
-    echo -e "  ${WHITE}Comandos Rápidos:${RESET} ${NEON_PINK}adm${RESET} o ${NEON_PINK}admin${RESET}"
+    badvpn_est=$(systemctl is-active "$BADVPN_SERVICE" 2>/dev/null || echo "inactivo")
+    [ "$badvpn_est" = "active" ] && bv_color="${NEON_GREEN}ACTIVO 🟢${RESET}" || bv_color="${RED}INACTIVO 🔴${RESET}"
+
+    echo -e "  ${WHITE}BHTTP Servidor :${RESET} ${estado_color}  |  ${WHITE}Puerto:${RESET} ${NEON_GREEN}${PUERTO:-No asignado}${RESET}"
+    echo -e "  ${WHITE}BadVPN Gateway :${RESET} ${bv_color}  |  ${WHITE}Puerto:${RESET} ${NEON_GREEN}${BADVPN_PORT}${RESET}"
+    echo -e "  ${WHITE}Comandos Ráp.  :${RESET} ${NEON_PINK}adm${RESET} o ${NEON_PINK}admin${RESET}"
     linea
     echo -e "  ${NEON_GREEN}[1]${RESET} Instalar / Reinstalar o Cambiar Puerto BHTTP"
     echo -e "  ${NEON_GREEN}[2]${RESET} Gestión de Usuarios y Credenciales"
     echo -e "  ${NEON_GREEN}[3]${RESET} Activar / Abrir Puerto Personalizado en Firewall"
     echo -e "  ${NEON_GREEN}[4]${RESET} Panel de Control de Servicios (Iniciar / Parar / Reiniciar)"
     echo -e "  ${NEON_GREEN}[5]${RESET} Diagnóstico General del Sistema"
+    echo -e "  ${NEON_GREEN}[6]${RESET} Destrucción Total / Desinstalar Script"
     echo -e "  ${NEON_GREEN}[7]${RESET} Actualizar Script desde GitHub"
-    echo -e "  ${RED}[6]${RESET} Destrucción Total / Desinstalar Script"
+    echo -e "  ${NEON_GREEN}[8]${RESET} Auto iniciar script [ ${NEON_ORANGE}$AUTOSTART_STATUS${RESET} ]"
+    echo -e "  ${NEON_GREEN}[9]${RESET} Optimizar VPS & BadVPN Controls"
     echo -e "  ${RED}[0]${RESET} Salir del Panel"
     linea
-    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción [1-7, 0]: "
+    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción [1-9, 0]: "
     read -r opcion
     case $opcion in
       1) instalar_servidor ;;
@@ -542,8 +814,8 @@ menu_principal() {
       3) menu_activar_puertos ;;
       4) 
         seccion "CONTROL DE SERVICIOS"
-        echo -e "  [1] Iniciar todo"
-        echo -e "  [2] Detener todo"
+        echo -e "  [1] Iniciar todo (BHTTP + BadVPN)"
+        echo -e "  [2] Detener todo (BHTTP + BadVPN)"
         echo -e "  [3] Reiniciar todo"
         echo -ne "  Selecciona: "
         read -r st
@@ -556,13 +828,12 @@ menu_principal() {
       5) 
         titulo
         seccion "DIAGNÓSTICO EN VIVO"
-        echo -e "  IP Pública   : $(curl -fsS --max-time 3 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
+        echo -e "  IP Pública   : $(obtener_ip_publica)"
         echo -e "  BHTTP Puerto : ${PUERTO:-No configurado}"
         echo -e "  BadVPN Puerto: $BADVPN_PORT"
         echo -e "  Atajo 'adm'  : Activo y Configurado"
         pausa
         ;;
-      7) actualizar_script ;;
       6) 
         seccion "DESTRUCCIÓN TOTAL"
         echo -ne " ${RED}⚠ ¿Eliminar todo por completo? (s/n): ${RESET}"
@@ -572,13 +843,16 @@ menu_principal() {
           systemctl disable "$SERVICE" "$BADVPN_SERVICE" 2>/dev/null
           rm -rf "$UNIT" "$BADVPN_UNIT" "$DESTDIR" "$CONFIG_DIR" "$SCRIPT_PATH" "$ADM_BIN" "$ADMIN_BIN" 2>/dev/null
           for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
-            [ -f "$rc" ] && sed -i '/alias adm=/d' "$rc" 2>/dev/null && sed -i '/alias admin=/d' "$rc" 2>/dev/null
+            [ -f "$rc" ] && sed -i '/alias adm=/d' "$rc" 2>/dev/null && sed -i '/alias admin=/d' "$rc" 2>/dev/null && sed -i '/intalar\.sh/d' "$rc" 2>/dev/null
           done
           systemctl daemon-reload
           ok "¡Destrucción total completada!"
           exit 0
         fi
         ;;
+      7) actualizar_script ;;
+      8) menu_autostart ;;
+      9) menu_optimizar_vps ;;
       0) echo -e "\n ${NEON_GREEN}¡Hasta luego, Hazael!${RESET}\n"; exit 0 ;;
       *) fail "Opción inválida"; pausa ;;
     esac
