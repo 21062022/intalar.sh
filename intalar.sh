@@ -1,9 +1,9 @@
-cat << 'EOF' > /usr/local/bin/intalar.sh
+
 #!/usr/bin/env bash
 # ==============================================================================
-# INSTALADOR DE SCRIPTS MÚLTIPLES DE HAZAEL MORENO - EDICIÓN ULTRA CIBERNÉTICA
-# PROTOCOLO BHTTP V.1 & BADVPN (TIGO Y CLARO NICARAGUA COMPLETO)
-# EDICIÓN DE SERVIDOR PREMIUM v6.6 (Puerto Personalizable y Corrección de administrador)
+#        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
+#        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
+#        PREMIUM SERVER EDITION v6.6 (Puerto Personalizable & Fix Adm)
 # ==============================================================================
 
 set -o pipefail
@@ -16,19 +16,19 @@ BOLD="\e[1m"
 DIM="\e[2m"
 
 RED="\e[1;91m"
-VERDE="\e[1;92m"
-AMARILLO="\e[1;93m"
-AZUL="\e[1;94m"
+GREEN="\e[1;92m"
+YELLOW="\e[1;93m"
+BLUE="\e[1;94m"
 MAGENTA="\e[1;95m"
 CYAN="\e[1;96m"
 WHITE="\e[1;97m"
 GRAY="\e[1;90m"
 
 SKY="\e[38;5;117m"
-NEON_AZUL="\e[38;5;39m"
-NEON_VERDE="\e[38;5;46m"
-NEON_ROSA="\e[38;5;198m"
-NEON_NARANJA="\e[38;5;208m"
+NEON_BLUE="\e[38;5;39m"
+NEON_GREEN="\e[38;5;46m"
+NEON_PINK="\e[38;5;198m"
+NEON_ORANGE="\e[38;5;208m"
 
 # ==============================================================================
 # RUTAS Y DIRECTORIOS DEL SISTEMA
@@ -45,8 +45,9 @@ USERS_FILE="$CONFIG_DIR/cuentas.txt"
 SCRIPT_PATH="/usr/local/bin/intalar.sh"
 ADM_BIN="/usr/local/bin/adm"
 ADMIN_BIN="/usr/local/bin/admin"
+CANDIDATOS=(8080 80 8443 443 2082 2095 8880 2052 3128)
 
-PUERTO="8080"
+PUERTO=""
 SSHPORT=22
 BADVPN_PORT=7300
 
@@ -59,16 +60,16 @@ configurar_atajo_adm() {
   fi
   chmod +x "$SCRIPT_PATH" 2>/dev/null || true
 
-  cat > "$ADM_BIN" << 'EOF_A'
+  cat > "$ADM_BIN" << 'EOF'
 #!/usr/bin/env bash
 exec sudo bash /usr/local/bin/intalar.sh "$@"
-EOF_A
+EOF
   chmod +x "$ADM_BIN"
 
-  cat > "$ADMIN_BIN" << 'EOF_B'
+  cat > "$ADMIN_BIN" << 'EOF'
 #!/usr/bin/env bash
 exec sudo bash /usr/local/bin/intalar.sh "$@"
-EOF_B
+EOF
   chmod +x "$ADMIN_BIN"
 
   for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
@@ -83,7 +84,7 @@ EOF_B
 }
 
 # ==============================================================================
-# GESTIÓN GLOBAL DE FIREWALL
+# GESTIÓN GLOBAL DE FIREWALL (UFW E IPTABLES AUTOMÁTICO)
 # ==============================================================================
 abrir_puerto_sistema() {
     local p_custom="$1"
@@ -118,15 +119,15 @@ abrir_puerto_sistema() {
 # INTERFAZ VISUAL CYBERPUNK
 # ==============================================================================
 clear_screen() { clear 2>/dev/null || true; }
-linea() { echo -e "${NEON_AZUL}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"; }
+linea() { echo -e "${NEON_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"; }
 
 titulo() {
     clear_screen
-    echo -e "${NEON_ROSA}╔══════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${NEON_ROSA}║${RESET} ${NEON_VERDE}${BOLD} HAZAEL MORENO MULTI SCRIPT${RESET} ${NEON_ROSA}║${RESET}"
-    echo -e "${NEON_ROSA}║${RESET} ${NEON_AZUL}${BOLD} BHTTP V.1 & BADVPN PROTOCOL v6.6${RESET} ${NEON_ROSA}║${RESET}"
-    echo -e "${NEON_ROSA}╚══════════════════════════════════════════════════════════════╝${RESET}"
-    echo -e "${SKY} 🚀 ${NEON_NARANJA}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• TUNELIZACIÓN MÁXIMA PRO 🚀${RESET}"
+    echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v6.6${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
+    echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• TUNELIZACIÓN MÁXIMA PRO 🚀${RESET}"
     echo
 }
 
@@ -138,13 +139,13 @@ seccion() {
     echo
 }
 
-ok() { echo -e " ${NEON_VERDE}✔ [ÉXITO]${RESET} ${WHITE}$1${RESET}"; }
+ok() { echo -e " ${NEON_GREEN}✔ [ÉXITO]${RESET} ${WHITE}$1${RESET}"; }
 info() { echo -e " ${SKY}◆ [INFO]${RESET} ${WHITE}$1${RESET}"; }
 fail() { echo -e " ${RED}✖ [ERROR]${RESET} ${WHITE}$1${RESET}"; }
 
 pausa() {
     echo
-    echo -e "${GRAY} Presiona ${NEON_VERDE}[Enter]${GRAY} para regresar...${RESET}"
+    echo -e "${GRAY} Presiona ${NEON_GREEN}[Enter]${GRAY} para regresar...${RESET}"
     read -r
 }
 
@@ -177,7 +178,7 @@ EOF
 # ==============================================================================
 instalar_badvpn() {
     apt-get update -y >/dev/null 2>&1
-    apt-get install -y cmake g++ make wget curl iptables-persistent 2>/dev/null || true
+    apt-get install -y cmake g++ make wget curl badvpn iptables-persistent 2>/dev/null || true
 
     cat > "$BADVPN_UNIT" <<EOF
 [Unit]
@@ -200,6 +201,15 @@ EOF
     systemctl restart "$BADVPN_SERVICE"
 }
 
+ocupados() {
+  if command -v ss >/dev/null 2>&1; then
+    ss -tln 2>/dev/null | tail -n +2 | awk '{print $4}' | sed 's/.*://'
+  elif command -v netstat >/dev/null 2>&1; then
+    netstat -tln 2>/dev/null | awk '/^tcp/ {print $4}' | sed 's/.*://'
+  fi | grep -E '^[0-9]+$' | sort -u
+}
+libre() { ! ocupados | grep -qx "$1"; }
+
 instalar_servidor() {
   titulo
   seccion "INSTALACIÓN Y CONFIGURACIÓN DE PUERTO BHTTP"
@@ -207,7 +217,7 @@ instalar_servidor() {
   command -v python3 >/dev/null 2>&1 || { fail "Python3 no está instalado."; pausa; return 1; }
   
   local sugerido="${PUERTO:-8080}"
-  echo -e " ${WHITE}Puerto BHTTP actual/sugerido:${RESET} ${NEON_VERDE}$sugerido${RESET}"
+  echo -e "  ${WHITE}Puerto BHTTP actual/sugerido:${RESET} ${NEON_GREEN}$sugerido${RESET}"
   echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el nuevo puerto BHTTP (Presiona Enter para mantener $sugerido): "
   read -r nuevo_puerto
   
@@ -224,27 +234,22 @@ instalar_servidor() {
   mkdir -p "$DESTDIR"
   cat > "$SERVER_PY" << 'PYEOF'
 #!/usr/bin/env python3
-import argparse, asyncio, hashlib, sys
-
+import argparse, asyncio, hashlib, struct, sys
 MAGIC = b"BHP1"
 LONGPOLL = 2.0
-
 def keystream(sess, mode, seq, d, n):
     base = hashlib.sha256(sess + bytes([mode]) + seq.to_bytes(8, "big") + bytes([d]))
     out = bytearray(); c = 0
     while len(out) < n:
         h = base.copy(); h.update(c.to_bytes(4, "big")); out += h.digest(); c += 1
     return bytes(out[:n])
-
 def mask(data, sess, mode, seq, d):
     return bytes(a ^ b for a, b in zip(data, keystream(sess, mode, seq, d, len(data))))
-
 def probe_reply(mode, size):
     n = size if (mode == 2 and size >= 10) else 10
     out = bytearray(MAGIC + bytes([1, mode]) + size.to_bytes(4, "big"))
     for i in range(10, n): out.append((i * 31) & 255)
     return bytes(out)
-
 class Session:
     def __init__(self, sess, backend):
         self.sess = sess; self.backend = backend
@@ -297,10 +302,9 @@ class Session:
         async with self.cond: self.closed = True; self.cond.notify_all()
         try: self.bw.close()
         except Exception: pass
-
 class Server:
     def __init__(self, host, port, backend):
-        self.host = host; self.port = port; self.backend = backend
+        self.host, self.port, self.backend = host, port, backend
         self.sessions = {}; self.slock = asyncio.Lock()
     async def get_session(self, sess):
         async with self.slock:
@@ -316,7 +320,7 @@ class Server:
                 hdr = await reader.readexactly(29)
                 mode = hdr[0]; sess = hdr[1:17]; seq = int.from_bytes(hdr[17:25], "big"); ln = int.from_bytes(hdr[25:29], "big")
                 payload = b""
-                if ln > 0 and mode in (0, 1, 2, 3):
+                if ln and mode in (0, 1, 2, 3):
                     raw = await reader.readexactly(ln); payload = mask(raw, sess, mode, seq, 0)
                 if payload[:4] == MAGIC:
                     size = int.from_bytes(payload[6:10], "big") if len(payload) >= 10 else 0
@@ -352,7 +356,6 @@ class Server:
     async def serve(self):
         srv = await asyncio.start_server(self.handle, self.host, self.port, backlog=512)
         async with srv: await srv.serve_forever()
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="0.0.0.0")
@@ -361,7 +364,6 @@ def main():
     ap.add_argument("--backend-port", type=int, default=22)
     a = ap.parse_args()
     asyncio.run(Server(a.host, a.port, (a.backend_host, a.backend_port)).serve())
-
 if __name__ == "__main__": main()
 PYEOF
   chmod +x "$SERVER_PY"
@@ -369,7 +371,7 @@ PYEOF
   PYBIN="$(command -v python3)"
   cat > "$UNIT" <<EOF
 [Unit]
-Description=BHTTP Server (Port $PUERTO)
+Description=BHTTP Server (puerto $PUERTO)
 After=network.target
 
 [Service]
@@ -403,7 +405,7 @@ EOF
 crear_usuario() {
   local u="$1" p="$2" dias="$3"
   if id "$u" >/dev/null 2>&1; then
-    sed -i "/^Usuario: $u /d" "$USERS_FILE" 2>/dev/null
+    sed -i "/^User: $u /d" "$USERS_FILE" 2>/dev/null
   else
     useradd -M -s /bin/bash "$u" || return 1
   fi
@@ -415,17 +417,17 @@ crear_usuario() {
   else
     chage -E -1 "$u" 2>/dev/null; DIAS_FINAL="Ilimitado"
   fi
-  echo "Usuario: $u | Contraseña: $p | Dias: $DIAS_FINAL" >> "$USERS_FILE"
+  echo "User: $u | Pass: $p | Dias: $DIAS_FINAL" >> "$USERS_FILE"
 }
 
 menu_usuarios() {
   while true; do
     titulo
     seccion "GESTIÓN DE USUARIOS Y CREDENCIALES"
-    echo -e " ${NEON_VERDE}[1]${RESET} Crear usuario rápido"
-    echo -e " ${NEON_VERDE}[2]${RESET} Listar credenciales"
-    echo -e " ${NEON_VERDE}[3]${RESET} Eliminar usuario"
-    echo -e " ${RED}[0]${RESET} Regresar"
+    echo -e "  ${NEON_GREEN}[1]${RESET} Crear usuario rápido"
+    echo -e "  ${NEON_GREEN}[2]${RESET} Listar credenciales"
+    echo -e "  ${NEON_GREEN}[3]${RESET} Eliminar usuario"
+    echo -e "  ${RED}[0]${RESET} Regresar"
     linea
     echo -ne " ${NEON_ORANGE}◆${RESET} Opción: "
     read -r op
@@ -433,7 +435,7 @@ menu_usuarios() {
       1)
         echo -ne " Usuario: "; read -r nu
         echo -ne " Contraseña: "; read -r np
-        echo -ne " Días de vigencia: "; read -r nd
+        echo -ne " Días vigencia: "; read -r nd
         if [ ${#np} -lt 4 ]; then fail "Mínimo 4 caracteres"; else
           crear_usuario "$nu" "$np" "$nd" && ok "¡Usuario creado!"
         fi
@@ -446,10 +448,10 @@ menu_usuarios() {
         ;;
       3)
         echo -ne " Usuario a eliminar: "; read -r nu
-        userdel -r "$nu" 2>/dev/null && sed -i "/^Usuario: $nu /d" "$USERS_FILE" 2>/dev/null && ok "Eliminado"
+        userdel -r "$nu" 2>/dev/null && sed -i "/^User: $nu /d" "$USERS_FILE" 2>/dev/null && ok "Eliminado"
         pausa
         ;;
-      0) break ;;
+      0) return ;;
     esac
   done
 }
@@ -461,7 +463,7 @@ menu_activar_puertos() {
   while true; do
     titulo
     seccion "ACTIVADOR Y APERTURA MANUAL DE PUERTOS (FIREWALL)"
-    echo -e " ${WHITE}Abre cualquier puerto TCP adicional (ej. 443, 80, 8989, 8880, etc.)${RESET}"
+    echo -e "  ${WHITE}Abre cualquier puerto TCP adicional (ej. 443, 80, 8989, 8880, etc.)${RESET}"
     linea
     echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el número de puerto a abrir (Ej. 443): "
     read -r p_ingresado
@@ -474,7 +476,7 @@ menu_activar_puertos() {
     fi
     
     echo
-    echo -ne " ${SKY}◆${RESET} ¿Quieres abrir otro puerto? (s/n): "
+    echo -ne " ${SKY}◆${RESET} ¿Deseas abrir otro puerto? (s/n): "
     read -r otro
     [[ "$otro" =~ ^[sS]$ ]] || break
   done
@@ -498,13 +500,13 @@ actualizar_script() {
             configurar_atajo_adm
             ok "¡Script actualizado a la versión más reciente con éxito!"
             info "Reiniciando el panel automáticamente..."
-            pausa
-            exec bash "$SCRIPT_PATH"
+            sleep 2
+            exec sudo bash "$SCRIPT_PATH"
         else
-            fail "El archivo descargado de GitHub no parece ser un script Bash válido."
+            fail "El archivo descargado de GitHub no tiene un formato válido."
         fi
     else
-        fail "No se pudo conectar a GitHub para realizar la actualización."
+        fail "No se pudo conectar con GitHub. Revisa tu conexión."
     fi
     pausa
 }
@@ -513,33 +515,76 @@ actualizar_script() {
 # MENÚ PRINCIPAL
 # ==============================================================================
 menu_principal() {
-  check_root
-  cargar_config
   configurar_atajo_adm
-
   while true; do
     titulo
-    echo -e " ${NEON_VERDE}[1]${RESET} Instalar / Reinstalar o Cambiar Puerto BHTTP"
-    echo -e " ${NEON_VERDE}[2]${RESET} Gestión de Usuarios y Credenciales"
-    echo -e " ${NEON_VERDE}[3]${RESET} Activar / Abrir Puerto Personalizado en Firewall"
-    echo -e " ${NEON_VERDE}[4]${RESET} Actualizar Script desde GitHub"
-    echo -e " ${RED}[0]${RESET} Salir del Panel"
-    linea
-    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción [1-4, 0]: "
-    read -r opcion
+    local estado
+    estado=$(systemctl is-active "$SERVICE" 2>/dev/null || echo "inactivo")
+    [ "$estado" = "active" ] && estado_color="${NEON_GREEN}ACTIVO 🟢${RESET}" || estado_color="${RED}INACTIVO 🔴${RESET}"
 
+    echo -e "  ${WHITE}Estado Servidor:${RESET} ${estado_color}  |  ${WHITE}Puerto BHTTP:${RESET} ${NEON_GREEN}${PUERTO:-No asignado}${RESET}"
+    echo -e "  ${WHITE}Comandos Rápidos:${RESET} ${NEON_PINK}adm${RESET} o ${NEON_PINK}admin${RESET}"
+    linea
+    echo -e "  ${NEON_GREEN}[1]${RESET} Instalar / Reinstalar o Cambiar Puerto BHTTP"
+    echo -e "  ${NEON_GREEN}[2]${RESET} Gestión de Usuarios y Credenciales"
+    echo -e "  ${NEON_GREEN}[3]${RESET} Activar / Abrir Puerto Personalizado en Firewall"
+    echo -e "  ${NEON_GREEN}[4]${RESET} Panel de Control de Servicios (Iniciar / Parar / Reiniciar)"
+    echo -e "  ${NEON_GREEN}[5]${RESET} Diagnóstico General del Sistema"
+    echo -e "  ${NEON_GREEN}[7]${RESET} Actualizar Script desde GitHub"
+    echo -e "  ${RED}[6]${RESET} Destrucción Total / Desinstalar Script"
+    echo -e "  ${RED}[0]${RESET} Salir del Panel"
+    linea
+    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción [1-7, 0]: "
+    read -r opcion
     case $opcion in
       1) instalar_servidor ;;
       2) menu_usuarios ;;
       3) menu_activar_puertos ;;
-      4) actualizar_script ;;
-      0) clear_screen; ok "¡Gracias por utilizar Hazael Moreno Multi Script!"; exit 0 ;;
-      *) fail "Opción inválida."; sleep 1 ;;
+      4) 
+        seccion "CONTROL DE SERVICIOS"
+        echo -e "  [1] Iniciar todo"
+        echo -e "  [2] Detener todo"
+        echo -e "  [3] Reiniciar todo"
+        echo -ne "  Selecciona: "
+        read -r st
+        case $st in
+          1) systemctl start "$SERVICE" "$BADVPN_SERVICE"; ok "Iniciados"; pausa ;;
+          2) systemctl stop "$SERVICE" "$BADVPN_SERVICE"; ok "Detenidos"; pausa ;;
+          3) systemctl restart "$SERVICE" "$BADVPN_SERVICE"; ok "Reiniciados"; pausa ;;
+        esac
+        ;;
+      5) 
+        titulo
+        seccion "DIAGNÓSTICO EN VIVO"
+        echo -e "  IP Pública   : $(curl -fsS --max-time 3 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
+        echo -e "  BHTTP Puerto : ${PUERTO:-No configurado}"
+        echo -e "  BadVPN Puerto: $BADVPN_PORT"
+        echo -e "  Atajo 'adm'  : Activo y Configurado"
+        pausa
+        ;;
+      7) actualizar_script ;;
+      6) 
+        seccion "DESTRUCCIÓN TOTAL"
+        echo -ne " ${RED}⚠ ¿Eliminar todo por completo? (s/n): ${RESET}"
+        read -r confirmar
+        if [[ "$confirmar" =~ ^[sS]$ ]]; then
+          systemctl stop "$SERVICE" "$BADVPN_SERVICE" 2>/dev/null
+          systemctl disable "$SERVICE" "$BADVPN_SERVICE" 2>/dev/null
+          rm -rf "$UNIT" "$BADVPN_UNIT" "$DESTDIR" "$CONFIG_DIR" "$SCRIPT_PATH" "$ADM_BIN" "$ADMIN_BIN" 2>/dev/null
+          for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
+            [ -f "$rc" ] && sed -i '/alias adm=/d' "$rc" 2>/dev/null && sed -i '/alias admin=/d' "$rc" 2>/dev/null
+          done
+          systemctl daemon-reload
+          ok "¡Destrucción total completada!"
+          exit 0
+        fi
+        ;;
+      0) echo -e "\n ${NEON_GREEN}¡Hasta luego, Hazael!${RESET}\n"; exit 0 ;;
+      *) fail "Opción inválida"; pausa ;;
     esac
   done
 }
 
+check_root
+cargar_config
 menu_principal
-EOF
-chmod +x /usr/local/bin/intalar.sh
-/usr/local/bin/intalar.sh
