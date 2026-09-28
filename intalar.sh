@@ -8,7 +8,7 @@
 set -o pipefail
 
 # ==============================================================================
-# PALETA DE COLORES VIBRANTES Y NEÓN
+# PALETA DE COLORES VIBRANTES Y NEÓN SALVAJE
 # ==============================================================================
 RESET="\e[0m"
 BOLD="\e[1m"
@@ -28,6 +28,8 @@ NEON_BLUE="\e[38;5;39m"
 NEON_GREEN="\e[38;5;46m"
 NEON_PINK="\e[38;5;198m"
 NEON_ORANGE="\e[38;5;208m"
+NEON_PURPLE="\e[38;5;141m"
+NEON_YELLOW="\e[38;5;226m"
 
 # ==============================================================================
 # RUTAS Y DIRECTORIOS DEL SISTEMA
@@ -114,19 +116,32 @@ abrir_puerto_sistema() {
 }
 
 # ==============================================================================
-# INTERFAZ VISUAL CYBERPUNK
+# INTERFAZ VISUAL CYBERPUNK COLORIDA SALVAJE
 # ==============================================================================
 clear_screen() { clear 2>/dev/null || true; }
 linea() { echo -e "${NEON_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"; }
 
 titulo() {
     clear_screen
-    echo -e "${NEON_PINK}╭──────────────────────────────────────────────────────────────╮${RESET}"
-    echo -e "${NEON_PINK}│${RESET} ${NEON_GREEN}${BOLD} HAZAEL MORENO MULTI SCRIPT${RESET}                             ${NEON_PINK}│${RESET}"
-    echo -e "${NEON_PINK}│${RESET} ${NEON_BLUE}${BOLD} BHTTP V.1 & BADVPN PROTOCOL v6.6${RESET}                       ${NEON_PINK}│${RESET}"
-    echo -e "${NEON_PINK}╰──────────────────────────────────────────────────────────────╯${RESET}"
-    echo -e "${SKY} 🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• TUNELIZACIÓN MÁXIMA PRO 🚀${RESET}"
+    cargar_config
+    echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════╗${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}         HAZAEL MORENO MULTI SCRIPT                   ${RESET}${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}       BHTTP V.1 & BADVPN PROTOCOL v6.6                ${RESET}${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════╝${RESET}"
+    echo -e "      ${NEON_ORANGE}🚀 TIGO Y CLARO NICARAGUA • TUNELIZACIÓN MÁXIMA PRO 🚀${RESET}"
     echo
+
+    # Estado del servidor en vivo
+    if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
+        STATUS_STR="${NEON_GREEN}${BOLD}ACTIVO 🟢${RESET}"
+    else
+        STATUS_STR="${ROJO}${BOLD}INACTIVO 🔴${RESET}"
+    fi
+
+    PUERTO_SHOW="${PUERTO:-8080}"
+    echo -e " ${BLANCO}${BOLD}Estado Servidor:${RESET} $STATUS_STR ${BLANCO}│ Puerto BHTTP:${RESET} ${NEON_YELLOW}${BOLD}$PUERTO_SHOW${RESET}"
+    echo -e " ${BLANCO}${BOLD}Comandos Rápidos:${RESET} ${NEON_PINK}${BOLD}adm${RESET} ${BLANCO}o${RESET} ${NEON_PINK}${BOLD}admin${RESET}"
+    linea
 }
 
 seccion() {
@@ -389,7 +404,7 @@ EOF
 }
 
 # ==============================================================================
-# GESTIÓN DE USUARIOS
+# GESTIÓN DE USUARIOS Y MONITOR EN TIEMPO REAL
 # ==============================================================================
 crear_usuario() {
   local u="$1" p="$2" dias="$3"
@@ -476,126 +491,9 @@ menu_usuarios() {
   while true; do
     titulo
     seccion "GESTIÓN DE USUARIOS Y CREDENCIALES"
-    echo -e " ${NEON_GREEN}╭═[1]${RESET} ${BLANCO}Crear usuario rápido${RESET}"
-    echo -e " ${NEON_GREEN}├═[2]${RESET} ${NEON_BLUE}${BOLD}Listar credenciales & Monitor en tiempo real 📡${RESET}"
-    echo -e " ${NEON_GREEN}├═[3]${RESET} ${BLANCO}Eliminar usuario${RESET}"
-    echo -e " ${ROJO}╰═[0]${RESET} ${BLANCO}Regresar al Menú Principal${RESET}"
+    echo -e " ${NEON_GREEN}[1]${RESET} Crear usuario rápido"
+    echo -e " ${NEON_GREEN}[2]${RESET} ${NEON_BLUE}${BOLD}Listar credenciales & Monitor en tiempo real 📡${RESET}"
+    echo -e " ${NEON_GREEN}[3]${RESET} Eliminar usuario"
+    echo -e " ${ROJO}[0]${RESET} Regresar al Menú Principal"
     linea
-    echo -ne " ${NEON_ORANGE}◆${RESET} Opción: "
-    read -r op
-    case $op in
-      1)
-        echo -ne " Usuario: "; read -r nu
-        echo -ne " Contraseña: "; read -r np
-        echo -ne " Días de vigencia: "; read -r nd
-        if [ ${#np} -lt 4 ]; then
-            fail "Mínimo 4 caracteres para la contraseña"
-        else
-            crear_usuario "$nu" "$np" "$nd" && ok "¡Usuario $nu creado con éxito!"
-        fi
-        pausa
-        ;;
-      2)
-        monitor_usuarios_tiempo_real
-        ;;
-      3)
-        echo -ne " Usuario a eliminar: "; read -r nu
-        if userdel -r "$nu" 2>/dev/null; then
-            sed -i "/Usuario: $nu /d" "$USERS_FILE" 2>/dev/null
-            ok "Usuario $nu eliminado del sistema."
-        else
-            fail "No se pudo eliminar el usuario $nu o no existe."
-        fi
-        pausa
-        ;;
-      0) break ;;
-    esac
-  done
-}
-
-# ==============================================================================
-# ACTIVADOR Y APERTURA MANUAL DE PUERTOS
-# ==============================================================================
-menu_activar_puertos() {
-  while true; do
-    titulo
-    seccion "ACTIVADOR Y APERTURA MANUAL DE PUERTOS (FIREWALL)"
-    echo -e " ${BLANCO}Abre cualquier puerto TCP adicional (ej. 443, 80, 8989, 8880, etc.)${RESET}"
-    linea
-    echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el número de puerto a abrir (Ej. 443): "
-    read -r p_ingresado
-
-    if [[ "$p_ingresado" =~ ^[0-9]+$ ]] && [ "$p_ingresado" -gt 0 ] && [ "$p_ingresado" -le 65535 ]; then
-      abrir_puerto_sistema "$p_ingresado"
-      ok "¡El puerto $p_ingresado ya está abierto y aceptando tráfico!"
-    else
-      fail "Número de puerto inválido."
-    fi
-    
-    echo
-    echo -ne " ${CIELO}◆${RESET} ¿Quieres abrir otro puerto? (s/n): "
-    read -r otro
-    [[ "$otro" =~ ^[sS]$ ]] || break
-  done
-}
-
-# ==============================================================================
-# ACTUALIZADOR AUTOMÁTICO DESDE GITHUB
-# ==============================================================================
-actualizar_script() {
-    titulo
-    seccion "ACTUALIZADOR AUTOMÁTICO DEL SCRIPT"
-    info "Conectando con GitHub para buscar cambios..."
-    
-    local URL_GITHUB="https://raw.githubusercontent.com/21062022/intalar.sh/main/intalar.sh"
-    local TEMP_SCRIPT="/tmp/intalar_update.sh"
-    
-    if curl -fsSL "$URL_GITHUB" -o "$TEMP_SCRIPT"; then
-        if head -n 3 "$TEMP_SCRIPT" | grep -q "bash"; then
-            cp "$TEMP_SCRIPT" "$SCRIPT_PATH" 2>/dev/null
-            chmod +x "$SCRIPT_PATH"
-            configurar_atajo_adm
-            ok "¡Script actualizado a la versión más reciente con éxito!"
-            info "Reiniciando el panel automáticamente..."
-            pausa
-            exec bash "$SCRIPT_PATH"
-        else
-            fail "El archivo descargado de GitHub no parece ser un script Bash válido."
-        fi
-    else
-        fail "No se pudo conectar a GitHub para realizar la actualización."
-    fi
-    pausa
-}
-
-# ==============================================================================
-# MENÚ PRINCIPAL DEL PANEL
-# ==============================================================================
-menu_principal() {
-  check_root
-  cargar_config
-  configurar_atajo_adm
-
-  while true; do
-    titulo
-    echo -e " ${NEON_GREEN}╭═[1]${RESET} ${BLANCO}Instalar / Configurar Servidor BHTTP${RESET}"
-    echo -e " ${NEON_GREEN}├═[2]${RESET} ${NEON_BLUE}${BOLD}Gestión de Usuarios & Monitor en tiempo real 📡${RESET}"
-    echo -e " ${NEON_GREEN}├═[3]${RESET} ${BLANCO}Abrir puertos manualmente (Firewall)${RESET}"
-    echo -e " ${NEON_GREEN}├═[4]${RESET} ${BLANCO}Actualizar Script desde GitHub${RESET}"
-    echo -e " ${ROJO}╰═[0]${RESET} ${BLANCO}Salir del Panel${RESET}"
-    linea
-    echo -ne " ${NEON_ORANGE}◆${RESET} Selección: "
-    read -r opcion
-
-    case $opcion in
-      1) instalar_servidor ;;
-      2) menu_usuarios ;;
-      3) menu_activar_puertos ;;
-      4) actualizar_script ;;
-      0) clear_screen; ok "¡Gracias por utilizar Hazael Moreno Multi Script!"; exit 0 ;;
-      *) fail "Opción inválida." ; sleep 1 ;;
-    esac
-  done
-}
-
-menu_principal
+    echo -ne " ${NEON_ORANGE}◆${RESE
