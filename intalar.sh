@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v7.0 (Mejoras Pro & Sin Borrar Nada)
+#        PREMIUM SERVER EDITION v7.1 (Todo OFF por defecto & Sin Borrar Nada)
 # ==============================================================================
 
 set -o pipefail
@@ -135,7 +135,7 @@ titulo() {
     ip_maquina=$(obtener_ip_publica)
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.0${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.1${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
     echo
@@ -188,7 +188,7 @@ EOF
 }
 
 # ==============================================================================
-# INSTALACIÓN DE BADVPN Y BHTTP (CON PUERTOS EN OF POR DEFECTO)
+# INSTALACIÓN DE BADVPN Y BHTTP (TODO 100% EN OFF POR DEFECTO)
 # ==============================================================================
 instalar_badvpn() {
     apt-get update -y >/dev/null 2>&1
@@ -399,13 +399,13 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  # Por defecto en OFF al instalar/configurar
+  # ASEGURADO: Apagado por defecto (OFF) para que NADA arranque activo solo
   systemctl disable "$SERVICE" >/dev/null 2>&1
   systemctl stop "$SERVICE" >/dev/null 2>&1
   instalar_badvpn
   configurar_atajo_adm
 
-  ok "¡Servidor BHTTP configurado! (El servicio se mantiene en OFF hasta que lo enciendas)."
+  ok "¡Servidor BHTTP configurado! (El servicio y puerto se mantienen en OFF hasta que los enciendas)."
   guardar_config
   pausa
 }
@@ -465,7 +465,6 @@ menu_usuarios() {
             u_pass=$(echo "$linea_usu" | grep -oP 'Pass: \K[^|]+' | xargs)
             u_dias=$(echo "$linea_usu" | grep -oP 'Dias: \K.*' | xargs)
             
-            # Calcular días restantes exactos si es posible
             local exp_date dias_restantes="N/A"
             exp_date=$(chage -l "$u_name" 2>/dev/null | grep "Account expires" | cut -d: -f2 | xargs)
             if [ "$exp_date" != "never" ] && [ -n "$exp_date" ]; then
@@ -545,12 +544,10 @@ menu_usuarios() {
             echo -ne " Añadir días de vigencia (ej. 30, deja en blanco para no cambiar): "
             read -r n_dias
             
-            # Extraer pass actual si no se cambia
             local p_actual
             p_actual=$(grep "^User: $target_user " "$USERS_FILE" | grep -oP 'Pass: \K[^|]+' | xargs)
             [ -z "$n_pass" ] && n_pass="$p_actual"
             
-            # Actualizar Linux user pass
             local pass_hash; pass_hash="$(openssl passwd -6 "$n_pass" 2>/dev/null)"
             usermod -p "$pass_hash" "$target_user" 2>/dev/null
 
@@ -573,7 +570,6 @@ menu_usuarios() {
         pausa
         ;;
       5)
-        # Bucle en vivo actualizándose cada 5 segundos
         clear
         echo -e "${NEON_GREEN}=== MONITOREO DE USUARIOS EN LÍNEA (Actualiza cada 5s) ===${RESET}"
         echo -e "${GRAY}Presiona [Ctrl + C] para salir de la vista en vivo.${RESET}\n"
@@ -589,12 +585,10 @@ menu_usuarios() {
               local u_name
               u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
               if [ -n "$u_name" ]; then
-                # Contar conexiones activas asociadas al usuario por procesos o sockets
                 local count=0
                 if command -v who >/dev/null 2>&1; then
                   count=$(who | awk -v u="$u_name" '$1==u {print $1}' | wc -l)
                 fi
-                # Verificar conexiones netstat/ss por PID o sesiones activas de systemd/ssh
                 local sock_count
                 sock_count=$(ss -tnp 2>/dev/null | grep -i "$u_name" | wc -l)
                 [ "$sock_count" -gt "$count" ] && count="$sock_count"
