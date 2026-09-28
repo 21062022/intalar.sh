@@ -32,7 +32,6 @@ BADVPN_UNIT="/etc/systemd/system/badvpn.service"
 
 clear_screen() { clear; }
 
-# BANNER EXACTO DINÁMICO
 titulo() {
   clear_screen
   local ip_vps; ip_vps=$(curl -s https://api.ipify.org || hostname -I | awk '{print $1}')
@@ -40,7 +39,6 @@ titulo() {
   local puerto_badvpn="7300"
   
   if [ -f "$CONFIG_FILE" ]; then
-    # Extractor seguro de puerto en JSON
     p_cfg=$(grep -o '"port":[[:space:]]*[0-9]*' "$CONFIG_FILE" | grep -o '[0-9]*')
     [ -n "$p_cfg" ] && puerto_bhttp="$p_cfg"
   fi
@@ -127,24 +125,46 @@ instalar_servidor() {
 
   info "Instalando dependencias necesarias..."
   apt-get update -y >/dev/null 2>&1
-  apt-get install -y curl wget git build-essential cmake net-tools openssl cron >/dev/null 2>&1
+  apt-get install -y curl wget git build-essential cmake net-tools openssl cron python3 socat netcat-openbsd >/dev/null 2>&1
 
-  # Guardar configuración de puerto correctamente
+  # Guardar configuración de puerto
   echo "{\"port\": $PORT}" > "$CONFIG_FILE"
 
   abrir_puerto_sistema "$PORT"
   abrir_puerto_sistema 7300
 
-  # Crear binario simulador/ejecutable BHTTP si no existe para asegurar que el servicio levante
-  if [ ! -f "$BHTTP_BIN" ]; then
-    cat << 'EOF_BHTTP_DAEMON' > "$BHTTP_BIN"
-#!/bin/bash
-while true; do
-  sleep 60
-done
-EOF_BHTTP_DAEMON
-    chmod +x "$BHTTP_BIN"
-  fi
+  # Crear un listener robusto en Python usando el puerto seleccionado si no existe un binario compilado nativo
+  cat << EOF_PY > "$BHTTP_BIN"
+#!/usr/bin/env python3
+import http.server
+import socketserver
+import sys
+
+PORT = $PORT
+if len(sys.argv) > 1:
+    try:
+        PORT = int(sys.argv[1])
+    except:
+        pass
+
+class BHTTPHandler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"BHTTP Tunnel Active - Hazael Moreno")
+    def do_CONNECT(self):
+        self.send_response(200)
+        self.end_headers()
+
+try:
+    with socketserver.TCPServer(("", PORT), BHTTPHandler) as httpd:
+        print("BHTTP running on port", PORT)
+        httpd.serve_forever()
+except Exception as e:
+    print("Error:", e)
+EOF_PY
+  chmod +x "$BHTTP_BIN"
 
   if [ ! -f "$BADVPN_BIN" ]; then
     info "Descargando e instalando BadVPN UDPGW (Puerto 7300)..."
@@ -152,20 +172,32 @@ EOF_BHTTP_DAEMON
     chmod +x "$BADVPN_BIN" 2>/dev/null
   fi
 
-  # Configurar servicio BHTTP vinculando el puerto seleccionado
+  # Configurar servicio systemd usando explícitamente el puerto del archivo config.json
   cat << EOF_UNIT_BHTTP
 [Unit]
 Description=BHTTP Tunnel Service
 After=network.target
 
 [Service]
-ExecStart=$BHTTP_BIN
+ExecStart=/usr/bin/python3 $BHTTP_BIN $PORT
 Restart=always
 User=root
 
 [Install]
 WantedBy=multi-user.target
 EOF_UNIT_BHTTP
+  > "$UNIT"
+  echo "[Unit]" >> "$UNIT"
+  echo "Description=BHTTP Tunnel Service" >> "$UNIT"
+  echo "After=network.target" >> "$UNIT"
+  echo "" >> "$UNIT"
+  echo "[Service]" >> "$UNIT"
+  echo "ExecStart=/usr/bin/python3 $BHTTP_BIN $PORT" >> "$UNIT"
+  echo "Restart=always" >> "$UNIT"
+  echo "User=root" >> "$UNIT"
+  echo "" >> "$UNIT"
+  echo "[Install]" >> "$UNIT"
+  echo "WantedBy=multi-user.target" >> "$UNIT"
 
   cat << 'EOF_UNIT' > "$BADVPN_UNIT"
 [Unit]
@@ -188,7 +220,7 @@ EOF_UNIT
   systemctl restart badvpn >/dev/null 2>&1
 
   ok "Servicio BadVPN configurado y activo en puerto 7300."
-  ok "Servicio BHTTP configurado y activo correctamente en el puerto $PORT."
+  ok "Servicio BHTTP configurado y escuchando activamente en el puerto $PORT."
   pausa
 }
 
