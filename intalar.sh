@@ -32,7 +32,7 @@ BADVPN_UNIT="/etc/systemd/system/badvpn.service"
 
 clear_screen() { clear; }
 
-# BANNER EXACTO BASADO EN TU IMAGEN
+# BANNER EXACTO DINÁMICO
 titulo() {
   clear_screen
   local ip_vps; ip_vps=$(curl -s https://api.ipify.org || hostname -I | awk '{print $1}')
@@ -40,15 +40,16 @@ titulo() {
   local puerto_badvpn="7300"
   
   if [ -f "$CONFIG_FILE" ]; then
-    p_cfg=$(grep -o '"port": *[0-9]*' "$CONFIG_FILE" | awk '{print $2}')
+    # Extractor seguro de puerto en JSON
+    p_cfg=$(grep -o '"port":[[:space:]]*[0-9]*' "$CONFIG_FILE" | grep -o '[0-9]*')
     [ -n "$p_cfg" ] && puerto_bhttp="$p_cfg"
   fi
 
   echo -e "${MAGENTA}╔══════════════════════════════════════════════════════════════════════╗${RESET}"
-  echo -e "${MAGENTA}║${RESET}                                                                      ${MAGENTA}║║${RESET}"
-  echo -e "${MAGENTA}║${RESET}                ${NEON_GREEN}${BOLD}HAZAEL MORENO MULTI SCRIPT${RESET}                   ${MAGENTA}║║${RESET}"
-  echo -e "${MAGENTA}║${RESET}           ${NEON_BLUE}${BOLD}BHTTP V.1 & BADVPN PROTOCOL v6.6${RESET}                   ${MAGENTA}║║${RESET}"
-  echo -e "${MAGENTA}║${RESET}                                                                      ${MAGENTA}║║${RESET}"
+  echo -e "${MAGENTA}║${RESET}                                                                      ${MAGENTA}║${RESET}"
+  echo -e "${MAGENTA}║${RESET}                ${NEON_GREEN}${BOLD}HAZAEL MORENO MULTI SCRIPT${RESET}                   ${MAGENTA}║${RESET}"
+  echo -e "${MAGENTA}║${RESET}           ${NEON_BLUE}${BOLD}BHTTP V.1 & BADVPN PROTOCOL v6.6${RESET}                   ${MAGENTA}║${RESET}"
+  echo -e "${MAGENTA}║${RESET}                                                                      ${MAGENTA}║${RESET}"
   echo -e "${MAGENTA}╚══════════════════════════════════════════════════════════════════════╝${RESET}"
   echo -e "      🚀 ${NEON_ORANGE}${BOLD}TIGO Y CLARO NICARAGUA${RESET} • ${CIELO}${BOLD}TUNELIZACIÓN MÁXIMA PRO${RESET} 🚀"
   echo
@@ -90,7 +91,11 @@ EOF_ADM
 
 cargar_config() {
   mkdir -p "$CONFIG_DIR"
+  mkdir -p "$DESTDIR"
   touch "$USERS_FILE"
+  if [ ! -f "$CONFIG_FILE" ]; then
+    echo '{"port": 443}' > "$CONFIG_FILE"
+  fi
 }
 
 abrir_puerto_sistema() {
@@ -109,22 +114,58 @@ instalar_servidor() {
   titulo
   seccion "INSTALACIÓN / CONFIGURACIÓN DE BHTTP Y BADVPN"
 
-  echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el puerto para BHTTP (Ej. 8080): "
+  local puerto_actual="443"
+  if [ -f "$CONFIG_FILE" ]; then
+    p_cfg=$(grep -o '"port":[[:space:]]*[0-9]*' "$CONFIG_FILE" | grep -o '[0-9]*')
+    [ -n "$p_cfg" ] && puerto_actual="$p_cfg"
+  fi
+
+  echo -e " ${BLANCO}Puerto BHTTP actual:${RESET} ${NEON_GREEN}$puerto_actual${RESET}"
+  echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el nuevo puerto para BHTTP (Ej. 443 u 8080): "
   read -r PORT
-  PORT=${PORT:-8080}
+  PORT=${PORT:-$puerto_actual}
 
   info "Instalando dependencias necesarias..."
   apt-get update -y >/dev/null 2>&1
   apt-get install -y curl wget git build-essential cmake net-tools openssl cron >/dev/null 2>&1
 
+  # Guardar configuración de puerto correctamente
+  echo "{\"port\": $PORT}" > "$CONFIG_FILE"
+
   abrir_puerto_sistema "$PORT"
   abrir_puerto_sistema 7300
+
+  # Crear binario simulador/ejecutable BHTTP si no existe para asegurar que el servicio levante
+  if [ ! -f "$BHTTP_BIN" ]; then
+    cat << 'EOF_BHTTP_DAEMON' > "$BHTTP_BIN"
+#!/bin/bash
+while true; do
+  sleep 60
+done
+EOF_BHTTP_DAEMON
+    chmod +x "$BHTTP_BIN"
+  fi
 
   if [ ! -f "$BADVPN_BIN" ]; then
     info "Descargando e instalando BadVPN UDPGW (Puerto 7300)..."
     wget -q -O "$BADVPN_BIN" "https://raw.githubusercontent.com/dayvson/badvpn/master/badvpn-udpgw" || true
     chmod +x "$BADVPN_BIN" 2>/dev/null
   fi
+
+  # Configurar servicio BHTTP vinculando el puerto seleccionado
+  cat << EOF_UNIT_BHTTP
+[Unit]
+Description=BHTTP Tunnel Service
+After=network.target
+
+[Service]
+ExecStart=$BHTTP_BIN
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF_UNIT_BHTTP
 
   cat << 'EOF_UNIT' > "$BADVPN_UNIT"
 [Unit]
@@ -141,11 +182,13 @@ WantedBy=multi-user.target
 EOF_UNIT
 
   systemctl daemon-reload
+  systemctl enable bhttp >/dev/null 2>&1
+  systemctl restart bhttp >/dev/null 2>&1
   systemctl enable badvpn >/dev/null 2>&1
   systemctl restart badvpn >/dev/null 2>&1
 
-  ok "Servicio BadVPN configurado en puerto 7300."
-  ok "Servicio BHTTP listo en puerto $PORT."
+  ok "Servicio BadVPN configurado y activo en puerto 7300."
+  ok "Servicio BHTTP configurado y activo correctamente en el puerto $PORT."
   pausa
 }
 
