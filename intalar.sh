@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v7.5 (BBR Avanzado & Control Real)
+#        PREMIUM SERVER EDITION v7.6 (Sincronización Real de Estados)
 # ==============================================================================
 
 set -o pipefail
@@ -136,7 +136,7 @@ titulo() {
     ip_maquina=$(obtener_ip_publica)
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.5${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.6${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
     echo
@@ -236,7 +236,7 @@ instalar_servidor() {
   
   command -v python3 >/dev/null 2>&1 || { fail "Python3 no está instalado."; pausa; return 1; }
   
-  local sugerido="${PUERTO:-8080}"
+  local sugerido="${PUERTO:-443}"
   echo -e "  ${WHITE}Puerto BHTTP actual/sugerido:${RESET} ${NEON_GREEN}$sugerido${RESET}"
   echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el nuevo puerto BHTTP (Presiona Enter para mantener $sugerido): "
   read -r nuevo_puerto
@@ -247,6 +247,8 @@ instalar_servidor() {
     else
       fail "Puerto inválido. Se mantendrá el puerto anterior: $sugerido"
     fi
+  else
+    PUERTO="$sugerido"
   fi
 
   abrir_puerto_sistema "$PUERTO"
@@ -405,10 +407,12 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
+  systemctl enable "$SERVICE" >/dev/null 2>&1
+  systemctl start "$SERVICE" >/dev/null 2>&1
   instalar_badvpn
   configurar_atajo_adm
 
-  ok "¡Servidor BHTTP configurado!"
+  ok "¡Servidor BHTTP instalado y encendido en el puerto $PUERTO!"
   guardar_config
   pausa
 }
@@ -900,16 +904,28 @@ menu_principal() {
     titulo
     local estado badvpn_est
     estado=$(systemctl is-active "$SERVICE" 2>/dev/null || echo "inactivo")
-    [ "$estado" = "active" ] && estado_color="${NEON_GREEN}ACTIVO 🟢${RESET}" || estado_color="${RED}INACTIVO 🔴${RESET}"
+    if [ "$estado" = "active" ]; then
+      estado_color="${NEON_GREEN}ACTIVO 🟢${RESET}"
+      bhttp_port_show="${NEON_GREEN}${PUERTO:-443}${RESET}"
+    else
+      estado_color="${RED}INACTIVO 🔴${RESET}"
+      bhttp_port_show="${RED}[ NINGUNO ]${RESET}"
+    fi
 
     badvpn_est=$(systemctl is-active "$BADVPN_SERVICE" 2>/dev/null || echo "inactivo")
-    [ "$badvpn_est" = "active" ] && bv_color="${NEON_GREEN}ACTIVO 🟢${RESET}" || bv_color="${RED}INACTIVO 🔴${RESET}"
+    if [ "$badvpn_est" = "active" ]; then
+      bv_color="${NEON_GREEN}ACTIVO 🟢${RESET}"
+      badvpn_port_show="${NEON_GREEN}${BADVPN_PORT}${RESET}"
+    else
+      bv_color="${RED}INACTIVO 🔴${RESET}"
+      badvpn_port_show="${RED}[ NINGUNO ]${RESET}"
+    fi
 
-    echo -e "  ${WHITE}BHTTP Servidor :${RESET} ${estado_color}  |  ${WHITE}Puerto:${RESET} ${NEON_GREEN}${PUERTO:-No asignado}${RESET}"
-    echo -e "  ${WHITE}BadVPN Gateway :${RESET} ${bv_color}  |  ${WHITE}Puerto:${RESET} ${NEON_GREEN}${BADVPN_PORT}${RESET}"
+    echo -e "  ${WHITE}BHTTP Servidor :${RESET} ${estado_color}  |  ${WHITE}Puerto:${RESET} ${bhttp_port_show}"
+    echo -e "  ${WHITE}BadVPN Gateway :${RESET} ${bv_color}  |  ${WHITE}Puerto:${RESET} ${badvpn_port_show}"
     echo -e "  ${WHITE}Comandos Ráp.  :${RESET} ${NEON_PINK}adm${RESET} o ${NEON_PINK}admin${RESET}"
     linea
-    echo -e "  ${NEON_GREEN}[1]${RESET} Instalar / Reinstalar BHTTP y BadVPN"
+    echo -e "  ${NEON_GREEN}[1]${RESET} Instalar / Reinstalar puerto BHTTP OK"
     echo -e "  ${NEON_GREEN}[2]${RESET} Gestionar Usuarios (Crear, Editar, En línea)"
     echo -e "  ${NEON_GREEN}[3]${RESET} Encender / Apagar BHTTP Server"
     echo -e "  ${NEON_GREEN}[4]${RESET} Abrir Puertos Manuales (Firewall)"
