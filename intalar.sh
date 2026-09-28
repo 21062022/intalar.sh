@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v7.6 (Sincronización Real de Estados)
+#        PREMIUM SERVER EDITION v7.7 (Sincronización Total y Limpieza de UI)
 # ==============================================================================
 
 set -o pipefail
@@ -48,7 +48,6 @@ ADMIN_BIN="/usr/local/bin/admin"
 PUERTO=""
 SSHPORT=22
 BADVPN_PORT=7300
-BADVPN_STATUS="OFF"
 AUTOSTART_STATUS="OFF"
 CRON_STATUS="OFF"
 BBR_STATUS="OFF"
@@ -136,7 +135,7 @@ titulo() {
     ip_maquina=$(obtener_ip_publica)
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.6${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.7${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
     echo
@@ -170,10 +169,9 @@ check_root() {
 cargar_config() {
   mkdir -p "$CONFIG_DIR"
   [ -f "$CONFIG" ] && source "$CONFIG"
-  [ -z "${PUERTO:-}" ] && PUERTO="8080"
+  [ -z "${PUERTO:-}" ] && PUERTO="443"
   [ -z "${SSHPORT:-}" ] && SSHPORT=22
   [ -z "${BADVPN_PORT:-}" ] && BADVPN_PORT=7300
-  [ -z "${BADVPN_STATUS:-}" ] && BADVPN_STATUS="OFF"
   [ -z "${AUTOSTART_STATUS:-}" ] && AUTOSTART_STATUS="OFF"
   [ -z "${CRON_STATUS:-}" ] && CRON_STATUS="OFF"
   [ -z "${BBR_STATUS:-}" ] && BBR_STATUS="OFF"
@@ -185,7 +183,6 @@ guardar_config() {
 PUERTO=${PUERTO}
 SSHPORT=${SSHPORT}
 BADVPN_PORT=${BADVPN_PORT}
-BADVPN_STATUS=${BADVPN_STATUS}
 AUTOSTART_STATUS=${AUTOSTART_STATUS}
 CRON_STATUS=${CRON_STATUS}
 BBR_STATUS=${BBR_STATUS}
@@ -658,8 +655,6 @@ menu_optimizar_vps() {
         systemctl enable "$BADVPN_SERVICE" >/dev/null 2>&1
         systemctl restart "$BADVPN_SERVICE"
         abrir_puerto_sistema "$BADVPN_PORT"
-        BADVPN_STATUS="ON (7300)"
-        guardar_config
         ok "¡BadVPN activado exitosamente en el puerto 7300!"
         pausa
         ;;
@@ -669,16 +664,12 @@ menu_optimizar_vps() {
         systemctl enable "$BADVPN_SERVICE" >/dev/null 2>&1
         systemctl restart "$BADVPN_SERVICE"
         abrir_puerto_sistema "$BADVPN_PORT"
-        BADVPN_STATUS="ON (7200)"
-        guardar_config
         ok "¡BadVPN activado exitosamente en el puerto 7200!"
         pausa
         ;;
       3)
         systemctl stop "$BADVPN_SERVICE" 2>/dev/null
         systemctl disable "$BADVPN_SERVICE" 2>/dev/null
-        BADVPN_STATUS="OFF"
-        guardar_config
         ok "¡BadVPN apagado correctamente!"
         pausa
         ;;
@@ -909,7 +900,7 @@ menu_principal() {
       bhttp_port_show="${NEON_GREEN}${PUERTO:-443}${RESET}"
     else
       estado_color="${RED}INACTIVO 🔴${RESET}"
-      bhttp_port_show="${RED}[ NINGUNO ]${RESET}"
+      bhttp_port_show="${RED}Ninguno${RESET}"
     fi
 
     badvpn_est=$(systemctl is-active "$BADVPN_SERVICE" 2>/dev/null || echo "inactivo")
@@ -918,7 +909,7 @@ menu_principal() {
       badvpn_port_show="${NEON_GREEN}${BADVPN_PORT}${RESET}"
     else
       bv_color="${RED}INACTIVO 🔴${RESET}"
-      badvpn_port_show="${RED}[ NINGUNO ]${RESET}"
+      badvpn_port_show="${RED}Ninguno${RESET}"
     fi
 
     echo -e "  ${WHITE}BHTTP Servidor :${RESET} ${estado_color}  |  ${WHITE}Puerto:${RESET} ${bhttp_port_show}"
