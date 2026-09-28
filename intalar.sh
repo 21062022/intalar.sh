@@ -1,10 +1,10 @@
+cat << 'EOF' > /usr/local/bin/intalar.sh
 #!/bin/bash
 # ==============================================================================
 # INSTALADOR / PANEL DE CONTROL
 # PROTOCOLO BHTTP V.1 & BADVPN (TIGO Y CLARO NICARAGUA COMPLETO)
 # ==============================================================================
 
-# Variables de colores ANSI
 RESET='\033[0m'
 BOLD='\033[1m'
 NEON_GREEN='\033[38;2;57;255;20m'
@@ -17,7 +17,6 @@ BLANCO='\033[38;2;255;255;255m'
 GRIS='\033[38;2;128;128;128m'
 MAGENTA='\033[38;2;255;0;255m'
 
-# Archivos y Rutas
 SCRIPT_PATH="/usr/local/bin/intalar.sh"
 ADM_BIN="/usr/local/bin/adm"
 ADMIN_BIN="/usr/local/bin/admin"
@@ -30,7 +29,6 @@ BADVPN_BIN="/usr/local/bin/badvpn-udpgw"
 UNIT="/etc/systemd/system/bhttp.service"
 BADVPN_UNIT="/etc/systemd/system/badvpn.service"
 
-# Funciones Visuales y Consola
 clear_screen() { clear; }
 
 titulo() {
@@ -62,10 +60,10 @@ check_root() {
 }
 
 configurar_atajo_adm() {
-  cat << EOF > "$ADM_BIN"
+  cat << 'EOF_ADM' > "$ADM_BIN"
 #!/bin/bash
-bash "$SCRIPT_PATH"
-EOF
+bash /usr/local/bin/intalar.sh
+EOF_ADM
   chmod +x "$ADM_BIN"
   cp -f "$ADM_BIN" "$ADMIN_BIN" 2>/dev/null
 }
@@ -75,9 +73,6 @@ cargar_config() {
   touch "$USERS_FILE"
 }
 
-# ==============================================================================
-# APERTURA DE PUERTOS
-# ==============================================================================
 abrir_puerto_sistema() {
   local p="$1"
   if command -v ufw >/dev/null 2>&1; then
@@ -90,9 +85,6 @@ abrir_puerto_sistema() {
   fi
 }
 
-# ==============================================================================
-# INSTALACIÓN Y CONFIGURACIÓN BHTTP / BADVPN
-# ==============================================================================
 instalar_servidor() {
   titulo
   seccion "INSTALACIÓN / CONFIGURACIÓN DE BHTTP Y BADVPN"
@@ -108,27 +100,25 @@ instalar_servidor() {
   abrir_puerto_sistema "$PORT"
   abrir_puerto_sistema 7300
 
-  # Configurar BadVPN si no existe
   if [ ! -f "$BADVPN_BIN" ]; then
     info "Descargando e instalando BadVPN UDPGW (Puerto 7300)..."
     wget -q -O "$BADVPN_BIN" "https://raw.githubusercontent.com/dayvson/badvpn/master/badvpn-udpgw" || true
     chmod +x "$BADVPN_BIN" 2>/dev/null
   fi
 
-  # Crear Servicio BadVPN
-  cat << EOF > "$BADVPN_UNIT"
+  cat << 'EOF_UNIT' > "$BADVPN_UNIT"
 [Unit]
 Description=BadVPN UDPGW Service
 After=network.target
 
 [Service]
-ExecStart=$BADVPN_BIN --listen-addr 127.0.0.1:7300 --max-clients 1000
+ExecStart=/usr/local/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 1000
 Restart=always
 User=root
 
 [Install]
 WantedBy=multi-user.target
-EOF
+EOF_UNIT
 
   systemctl daemon-reload
   systemctl enable badvpn >/dev/null 2>&1
@@ -139,9 +129,6 @@ EOF
   pausa
 }
 
-# ==============================================================================
-# GESTIÓN DE USUARIOS
-# ==============================================================================
 crear_usuario() {
   local u="$1"
   local p="$2"
@@ -318,7 +305,7 @@ borrar_todos_los_usuarios() {
   titulo
   seccion "ELIMINAR TODOS LOS USUARIOS"
   echo -e " ${ROJO}${BOLD}⚠️ ¡ADVERTENCIA! Esto borrará TODOS los usuarios del sistema y la lista.${RESET}"
-  echo -ne " ${AMARILLO}¿Estás seguro de que deseas eliminar TODOS los usuarios? (s/n): ${RESET}"
+  echo -ne " ¿Estás seguro de que deseas eliminar TODOS los usuarios? (s/n): "
   read -r resp
   if [[ "$resp" =~ ^[sS]$ ]]; then
     if [ -f "$USERS_FILE" ]; then
@@ -374,9 +361,6 @@ menu_usuarios() {
   done
 }
 
-# ==============================================================================
-# ACTIVADOR Y APERTURA MANUAL DE PUERTOS
-# ==============================================================================
 menu_activar_puertos() {
   while true; do
     titulo
@@ -400,9 +384,6 @@ menu_activar_puertos() {
   done
 }
 
-# ==============================================================================
-# PANEL DE CONTROL DE SERVICIOS
-# ==============================================================================
 panel_servicios() {
   while true; do
     titulo
@@ -423,9 +404,6 @@ panel_servicios() {
   done
 }
 
-# ==============================================================================
-# DETALLES DEL SERVIDOR VPS
-# ==============================================================================
 detalles_vps() {
     titulo
     seccion "DETALLES DE MI SERVIDOR VPS"
@@ -442,9 +420,6 @@ detalles_vps() {
     pausa
 }
 
-# ==============================================================================
-# OPTIMIZACIÓN AUTOMÁTICA Y LIMPIEZA CPU/RAM (CADA 6 HORAS)
-# ==============================================================================
 optimizar_script_cron() {
     titulo
     seccion "OPTIMIZACIÓN AUTOMÁTICA (CADA 6 HORAS)"
@@ -454,11 +429,11 @@ optimizar_script_cron() {
     echo -e " ${NEON_GREEN}✔ Mantener el VPS rápido sin borrar datos ni usuarios${RESET}"
     linea
     
-    cat << 'EOF' > /usr/local/bin/optimizar_vps.sh
+    cat << 'EOF_OPT' > /usr/local/bin/optimizar_vps.sh
 #!/bin/bash
 sync; echo 3 > /proc/sys/vm/drop_caches
 systemctl restart bhttp badvpn 2>/dev/null
-EOF
+EOF_OPT
     chmod +x /usr/local/bin/optimizar_vps.sh
 
     (crontab -l 2>/dev/null | grep -v "optimizar_vps.sh" ; echo "0 */6 * * * /usr/local/bin/optimizar_vps.sh >/dev/null 2>&1") | crontab -
@@ -468,9 +443,6 @@ EOF
     pausa
 }
 
-# ==============================================================================
-# ACTUALIZADOR AUTOMÁTICO DESDE GITHUB
-# ==============================================================================
 actualizar_script() {
     titulo
     seccion "ACTUALIZADOR AUTOMÁTICO DEL SCRIPT"
@@ -497,14 +469,11 @@ actualizar_script() {
     pausa
 }
 
-# ==============================================================================
-# DESINSTALADOR COMPLETO
-# ==============================================================================
 desinstalar_script() {
     titulo
     seccion "DESTRUCCIÓN TOTAL / DESINSTALAR SCRIPT"
     echo -e " ${ROJO}${BOLD}⚠️ ¡ADVERTENCIA! Esto eliminará el servicio BHTTP, BadVPN y las configuraciones.${RESET}"
-    echo -ne " ${AMARILLO}¿Estás seguro de que deseas continuar? (s/n): ${RESET}"
+    echo -ne " ¿Estás seguro de que deseas continuar? (s/n): "
     read -r resp
     if [[ "$resp" =~ ^[sS]$ ]]; then
         crontab -l 2>/dev/null | grep -v "optimizar_vps.sh" | crontab -
@@ -522,9 +491,6 @@ desinstalar_script() {
     fi
 }
 
-# ==============================================================================
-# MENÚ PRINCIPAL DEL PANEL
-# ==============================================================================
 menu_principal() {
   check_root
   cargar_config
@@ -561,3 +527,6 @@ menu_principal() {
 }
 
 menu_principal
+EOF
+chmod +x /usr/local/bin/intalar.sh
+/usr/local/bin/intalar.sh
