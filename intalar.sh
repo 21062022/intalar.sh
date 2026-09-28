@@ -1,10 +1,11 @@
 cat << 'EOF' > /usr/local/bin/intalar.sh
 #!/bin/bash
 # ==============================================================================
-# INSTALADOR / PANEL DE CONTROL
-# PROTOCOLO BHTTP V.1 & BADVPN (TIGO Y CLARO NICARAGUA COMPLETO)
+# HAZAEL MORENO MULTI SCRIPT
+# BHTTP V.1 & BADVPN PROTOCOL v6.6
 # ==============================================================================
 
+# Colores ANSI
 RESET='\033[0m'
 BOLD='\033[1m'
 NEON_GREEN='\033[38;2;57;255;20m'
@@ -15,7 +16,7 @@ CIELO='\033[38;2;135;206;235m'
 ROJO='\033[38;2;255;51;51m'
 BLANCO='\033[38;2;255;255;255m'
 GRIS='\033[38;2;128;128;128m'
-MAGENTA='\033[38;2;255;0;255m'
+MAGENTA='\033[38;2;255;20;147m'
 
 SCRIPT_PATH="/usr/local/bin/intalar.sh"
 ADM_BIN="/usr/local/bin/adm"
@@ -31,11 +32,30 @@ BADVPN_UNIT="/etc/systemd/system/badvpn.service"
 
 clear_screen() { clear; }
 
+# BANNER EXACTO BASADO EN TU IMAGEN
 titulo() {
   clear_screen
-  echo -e "${NEON_BLUE}====================================================================${RESET}"
-  echo -e " ${NEON_GREEN}${BOLD}        HAZAEL MORENO MULTI SCRIPT - BHTTP & BADVPN${RESET}"
-  echo -e "${NEON_BLUE}====================================================================${RESET}"
+  local ip_vps; ip_vps=$(curl -s https://api.ipify.org || hostname -I | awk '{print $1}')
+  local puerto_bhttp="443"
+  local puerto_badvpn="7300"
+  
+  if [ -f "$CONFIG_FILE" ]; then
+    p_cfg=$(grep -o '"port": *[0-9]*' "$CONFIG_FILE" | awk '{print $2}')
+    [ -n "$p_cfg" ] && puerto_bhttp="$p_cfg"
+  fi
+
+  echo -e "${MAGENTA}╔══════════════════════════════════════════════════════════════════════╗${RESET}"
+  echo -e "${MAGENTA}║${RESET}                                                                      ${MAGENTA}║║${RESET}"
+  echo -e "${MAGENTA}║${RESET}                ${NEON_GREEN}${BOLD}HAZAEL MORENO MULTI SCRIPT${RESET}                   ${MAGENTA}║║${RESET}"
+  echo -e "${MAGENTA}║${RESET}           ${NEON_BLUE}${BOLD}BHTTP V.1 & BADVPN PROTOCOL v6.6${RESET}                   ${MAGENTA}║║${RESET}"
+  echo -e "${MAGENTA}║${RESET}                                                                      ${MAGENTA}║║${RESET}"
+  echo -e "${MAGENTA}╚══════════════════════════════════════════════════════════════════════╝${RESET}"
+  echo -e "      🚀 ${NEON_ORANGE}${BOLD}TIGO Y CLARO NICARAGUA${RESET} • ${CIELO}${BOLD}TUNELIZACIÓN MÁXIMA PRO${RESET} 🚀"
+  echo
+  echo -e " ${BLANCO}${BOLD}IP Servidor:${RESET} ${NEON_YELLOW}${BOLD}$ip_vps${RESET}  |  ${BLANCO}${BOLD}Estado Servidor:${RESET} ${NEON_GREEN}${BOLD}ACTIVO ●${RESET}"
+  echo -e " ${BLANCO}${BOLD}Puerto BHTTP:${RESET} ${NEON_GREEN}${BOLD}$puerto_bhttp${RESET}       |  ${BLANCO}${BOLD}BadVPN UDPGW:${RESET} ${NEON_GREEN}${BOLD}$puerto_badvpn${RESET}"
+  echo -e " ${BLANCO}${BOLD}Comandos Rápidos:${RESET} ${MAGENTA}${BOLD}adm${RESET} o ${MAGENTA}${BOLD}admin${RESET}"
+  echo -e "${NEON_BLUE}────────────────────────────────────────────────────────────────────────${RESET}"
 }
 
 seccion() {
