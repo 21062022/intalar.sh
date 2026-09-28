@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v7.3 (Con BBR Avanzado & Control Real)
+#        PREMIUM SERVER EDITION v7.4 (BBR Avanzado & Control Real)
 # ==============================================================================
 
 set -o pipefail
@@ -136,7 +136,7 @@ titulo() {
     ip_maquina=$(obtener_ip_publica)
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.3${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.4${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
     echo
@@ -193,13 +193,12 @@ EOF
 }
 
 # ==============================================================================
-# INSTALACIÓN Y CONFIGURACIÓN DE BADVPN (FUNCIONAMIENTO GARANTIZADO)
+# INSTALACIÓN Y CONFIGURACIÓN DE BADVPN
 # ==============================================================================
 instalar_badvpn() {
     apt-get update -y >/dev/null 2>&1
     apt-get install -y cmake g++ make wget curl badvpn iptables-persistent 2>/dev/null || true
 
-    # Localizar ruta real del binario de badvpn-udpgw
     local bin_badvpn=""
     if [ -f /usr/bin/badvpn-udpgw ]; then
         bin_badvpn="/usr/bin/badvpn-udpgw"
@@ -691,7 +690,7 @@ menu_bhttp_bbr() {
   while true; do
     titulo
     seccion "BHTTP BBR • ACELERACIÓN DE TRANSPORTE TCP MÁXIMA"
-    echo -e "  ${WHITE}Estado Actual BBR:${RESET} [ ${NEON_ORANGE}$BBR_STATUS${RESET ]"
+    echo -e "  ${WHITE}Estado Actual BBR:${RESET} [ ${NEON_ORANGE}${BBR_STATUS}${RESET} ]"
     echo -e "  ${GRAY}Optimiza los búferes del kernel y el algoritmo de congestión TCP.${RESET}"
     linea
     echo -e "  ${NEON_GREEN}[1]${RESET} Fuerza Bruta (Máxima velocidad y búferes ilimitados)"
