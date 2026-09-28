@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v7.8 (Corrección Definitiva BadVPN & UI)
+#        PREMIUM SERVER EDITION v7.9 (Sincronización ON/OFF & UI Limpia)
 # ==============================================================================
 
 set -o pipefail
@@ -45,9 +45,10 @@ SCRIPT_PATH="/usr/local/bin/intalar.sh"
 ADM_BIN="/usr/local/bin/adm"
 ADMIN_BIN="/usr/local/bin/admin"
 
-PUERTO=""
+PUERTO="443"
 SSHPORT=22
 BADVPN_PORT=7300
+BADVPN_STATE="OFF"
 AUTOSTART_STATUS="OFF"
 CRON_STATUS="OFF"
 BBR_STATUS="OFF"
@@ -85,11 +86,11 @@ EOF
 }
 
 # ==============================================================================
-# GESTIÓN GLOBAL DE FIREWALL (TCP Y UDP PARA BADVPN Y BHTTP)
+# GESTIÓN GLOBAL DE FIREWALL (TCP Y UDP)
 # ==============================================================================
 abrir_puerto_sistema() {
     local p_custom="$1"
-    info "Aplicando reglas de red y firewall para el puerto $p_custom (TCP y UDP)..."
+    info "Aplicando reglas de red y firewall para el puerto $p_custom..."
 
     if command -v ufw >/dev/null 2>&1; then
         ufw allow "$p_custom"/tcp >/dev/null 2>&1
@@ -108,7 +109,6 @@ abrir_puerto_sistema() {
         iptables -A INPUT -p tcp --dport 22 -j ACCEPT 2>/dev/null || true
         iptables -A INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
         iptables -A INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
-        iptables -A INPUT -p tcp --dport 8080 -j ACCEPT 2>/dev/null || true
         
         if command -v netfilter-persistent >/dev/null 2>&1; then
             netfilter-persistent save >/dev/null 2>&1 || true
@@ -116,7 +116,7 @@ abrir_puerto_sistema() {
             iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
         fi
     fi
-    ok "Puertos y protocolos actualizados correctamente en el Firewall."
+    ok "Puertos y firewall actualizados correctamente."
 }
 
 # ==============================================================================
@@ -138,7 +138,7 @@ titulo() {
     ip_maquina=$(obtener_ip_publica)
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.8${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.9${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
     echo
@@ -175,6 +175,7 @@ cargar_config() {
   [ -z "${PUERTO:-}" ] && PUERTO="443"
   [ -z "${SSHPORT:-}" ] && SSHPORT=22
   [ -z "${BADVPN_PORT:-}" ] && BADVPN_PORT=7300
+  [ -z "${BADVPN_STATE:-}" ] && BADVPN_STATE="OFF"
   [ -z "${AUTOSTART_STATUS:-}" ] && AUTOSTART_STATUS="OFF"
   [ -z "${CRON_STATUS:-}" ] && CRON_STATUS="OFF"
   [ -z "${BBR_STATUS:-}" ] && BBR_STATUS="OFF"
@@ -186,6 +187,7 @@ guardar_config() {
 PUERTO=${PUERTO}
 SSHPORT=${SSHPORT}
 BADVPN_PORT=${BADVPN_PORT}
+BADVPN_STATE=${BADVPN_STATE}
 AUTOSTART_STATUS=${AUTOSTART_STATUS}
 CRON_STATUS=${CRON_STATUS}
 BBR_STATUS=${BBR_STATUS}
@@ -636,9 +638,12 @@ menu_activar_puertos() {
 menu_optimizar_vps() {
   while true; do
     titulo
-    local bv_estado_actual
-    bv_estado_actual=$(systemctl is-active "$BADVPN_SERVICE" 2>/dev/null || echo "inactivo")
-    [ "$bv_estado_actual" = "active" ] && bv_txt="${NEON_GREEN}ACTIVO (Puerto $BADVPN_PORT)${RESET}" || bv_txt="${RED}INACTIVO (OFF)${RESET}"
+    local bv_txt
+    if [ "$BADVPN_STATE" = "ON" ]; then
+      bv_txt="${NEON_GREEN}ACTIVO (ON) - Puerto $BADVPN_PORT${RESET}"
+    else
+      bv_txt="${RED}INACTIVO (OFF)${RESET}"
+    fi
 
     seccion "CONFIGURACIÓN DE BADVPN GATEWAY (UDP PARA JUEGOS Y VOIP)"
     echo -e "  ${WHITE}Estado Actual BadVPN:${RESET} [ $bv_txt ]"
@@ -658,6 +663,8 @@ menu_optimizar_vps() {
         systemctl enable "$BADVPN_SERVICE" >/dev/null 2>&1
         systemctl restart "$BADVPN_SERVICE"
         abrir_puerto_sistema "$BADVPN_PORT"
+        BADVPN_STATE="ON"
+        guardar_config
         ok "¡BadVPN activado exitosamente en el puerto 7300!"
         pausa
         ;;
@@ -667,12 +674,16 @@ menu_optimizar_vps() {
         systemctl enable "$BADVPN_SERVICE" >/dev/null 2>&1
         systemctl restart "$BADVPN_SERVICE"
         abrir_puerto_sistema "$BADVPN_PORT"
+        BADVPN_STATE="ON"
+        guardar_config
         ok "¡BadVPN activado exitosamente en el puerto 7200!"
         pausa
         ;;
       3)
         systemctl stop "$BADVPN_SERVICE" 2>/dev/null
         systemctl disable "$BADVPN_SERVICE" 2>/dev/null
+        BADVPN_STATE="OFF"
+        guardar_config
         ok "¡BadVPN apagado correctamente!"
         pausa
         ;;
@@ -896,22 +907,21 @@ menu_principal() {
   configurar_atajo_adm
   while true; do
     titulo
-    local estado badvpn_est
+    local estado
     estado=$(systemctl is-active "$SERVICE" 2>/dev/null || echo "inactivo")
     if [ "$estado" = "active" ]; then
-      estado_color="${NEON_GREEN}ACTIVO 🟢${RESET}"
+      estado_color="${NEON_GREEN}ACTIVO 🟢 (ON)${RESET}"
       bhttp_port_show="${NEON_GREEN}${PUERTO:-443}${RESET}"
     else
-      estado_color="${RED}INACTIVO 🔴${RESET}"
+      estado_color="${RED}INACTIVO 🔴 (OFF)${RESET}"
       bhttp_port_show="${RED}Ninguno${RESET}"
     fi
 
-    badvpn_est=$(systemctl is-active "$BADVPN_SERVICE" 2>/dev/null || echo "inactivo")
-    if [ "$badvpn_est" = "active" ]; then
-      bv_color="${NEON_GREEN}ACTIVO 🟢${RESET}"
+    if [ "$BADVPN_STATE" = "ON" ]; then
+      bv_color="${NEON_GREEN}ACTIVO 🟢 (ON)${RESET}"
       badvpn_port_show="${NEON_GREEN}${BADVPN_PORT}${RESET}"
     else
-      bv_color="${RED}INACTIVO 🔴${RESET}"
+      bv_color="${RED}INACTIVO 🔴 (OFF)${RESET}"
       badvpn_port_show="${RED}Ninguno${RESET}"
     fi
 
