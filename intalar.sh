@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v7.7 (Sincronización Total y Limpieza de UI)
+#        PREMIUM SERVER EDITION v7.8 (Corrección Definitiva BadVPN & UI)
 # ==============================================================================
 
 set -o pipefail
@@ -85,27 +85,30 @@ EOF
 }
 
 # ==============================================================================
-# GESTIÓN GLOBAL DE FIREWALL (UFW E IPTABLES AUTOMÁTICO)
+# GESTIÓN GLOBAL DE FIREWALL (TCP Y UDP PARA BADVPN Y BHTTP)
 # ==============================================================================
 abrir_puerto_sistema() {
     local p_custom="$1"
-    info "Aplicando reglas de red y firewall para el puerto $p_custom..."
+    info "Aplicando reglas de red y firewall para el puerto $p_custom (TCP y UDP)..."
 
     if command -v ufw >/dev/null 2>&1; then
         ufw allow "$p_custom"/tcp >/dev/null 2>&1
+        ufw allow "$p_custom"/udp >/dev/null 2>&1
         ufw allow "$BADVPN_PORT"/tcp >/dev/null 2>&1
+        ufw allow "$BADVPN_PORT"/udp >/dev/null 2>&1
         ufw allow 22/tcp >/dev/null 2>&1
         ufw reload >/dev/null 2>&1 || true
     fi
 
     if command -v iptables >/dev/null 2>&1; then
         iptables -A INPUT -p tcp --dport "$p_custom" -j ACCEPT 2>/dev/null || true
+        iptables -A INPUT -p udp --dport "$p_custom" -j ACCEPT 2>/dev/null || true
         iptables -A INPUT -p tcp --dport "$BADVPN_PORT" -j ACCEPT 2>/dev/null || true
+        iptables -A INPUT -p udp --dport "$BADVPN_PORT" -j ACCEPT 2>/dev/null || true
         iptables -A INPUT -p tcp --dport 22 -j ACCEPT 2>/dev/null || true
         iptables -A INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
         iptables -A INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
         iptables -A INPUT -p tcp --dport 8080 -j ACCEPT 2>/dev/null || true
-        iptables -A INPUT -p tcp --dport 8880 -j ACCEPT 2>/dev/null || true
         
         if command -v netfilter-persistent >/dev/null 2>&1; then
             netfilter-persistent save >/dev/null 2>&1 || true
@@ -113,7 +116,7 @@ abrir_puerto_sistema() {
             iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
         fi
     fi
-    ok "Puerto $p_custom y servicios activados en UFW e IPTables correctamente."
+    ok "Puertos y protocolos actualizados correctamente en el Firewall."
 }
 
 # ==============================================================================
@@ -135,7 +138,7 @@ titulo() {
     ip_maquina=$(obtener_ip_publica)
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.7${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.8${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
     echo
@@ -912,8 +915,8 @@ menu_principal() {
       badvpn_port_show="${RED}Ninguno${RESET}"
     fi
 
-    echo -e "  ${WHITE}BHTTP Servidor :${RESET} ${estado_color}  |  ${WHITE}Puerto:${RESET} ${bhttp_port_show}"
-    echo -e "  ${WHITE}BadVPN Gateway :${RESET} ${bv_color}  |  ${WHITE}Puerto:${RESET} ${badvpn_port_show}"
+    echo -e "  ${WHITE}BHTTP Servidor :${RESET} ${estado_color}  |  Puerto: ${bhttp_port_show}"
+    echo -e "  ${WHITE}BadVPN Gateway :${RESET} ${bv_color}  |  Puerto: ${badvpn_port_show}"
     echo -e "  ${WHITE}Comandos Ráp.  :${RESET} ${NEON_PINK}adm${RESET} o ${NEON_PINK}admin${RESET}"
     linea
     echo -e "  ${NEON_GREEN}[1]${RESET} Instalar / Reinstalar puerto BHTTP OK"
