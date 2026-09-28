@@ -399,7 +399,6 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  # ASEGURADO: Apagado por defecto (OFF) para que NADA arranque activo solo
   systemctl disable "$SERVICE" >/dev/null 2>&1
   systemctl stop "$SERVICE" >/dev/null 2>&1
   instalar_badvpn
@@ -439,7 +438,7 @@ menu_usuarios() {
     echo -e "  ${NEON_GREEN}[2]${RESET} Detalles de usuario existente (Panel)"
     echo -e "  ${NEON_GREEN}[3]${RESET} Eliminar usuario por numeración"
     echo -e "  ${NEON_GREEN}[4]${RESET} Editar Usuario (Añadir días / Cambiar contraseña)"
-    echo -e "  ${NEON_GREEN}[5]${RESET} Ver usuarios en línea (Actualización en vivo)"
+    echo -e "  ${NEON_GREEN}[5]${RESET} Ver usuarios en línea"
     echo -e "  ${RED}[0]${RESET} Regresar"
     linea
     echo -ne " ${NEON_ORANGE}◆${RESET} Opción: "
@@ -570,40 +569,29 @@ menu_usuarios() {
         pausa
         ;;
       5)
-        clear
-        echo -e "${NEON_GREEN}=== MONITOREO DE USUARIOS EN LÍNEA (Actualiza cada 5s) ===${RESET}"
-        echo -e "${GRAY}Presiona [Ctrl + C] para salir de la vista en vivo.${RESET}\n"
-        while true; do
-          tput civis 2>/dev/null || true
-          echo -ne "\033[H\033[2J"
-          echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
-          echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}             ESTADO DE USUARIOS CONECTADOS EN VIVO${RESET}             ${NEON_PINK}║${RESET}"
-          echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}\n"
-          
-          if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
-            while IFS= read -r linea_usu; do
-              local u_name
-              u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
-              if [ -n "$u_name" ]; then
-                local count=0
-                if command -v who >/dev/null 2>&1; then
-                  count=$(who | awk -v u="$u_name" '$1==u {print $1}' | wc -l)
-                fi
-                local sock_count
-                sock_count=$(ss -tnp 2>/dev/null | grep -i "$u_name" | wc -l)
-                [ "$sock_count" -gt "$count" ] && count="$sock_count"
-                
-                echo -e "  👤 Usuario: ${NEON_GREEN}${BOLD}$u_name${RESET} / ${NEON_ORANGE}$count en línea${RESET}"
+        titulo
+        seccion "ESTADO DE USUARIOS CONECTADOS EN VIVO"
+        if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
+          while IFS= read -r linea_usu; do
+            local u_name
+            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
+            if [ -n "$u_name" ]; then
+              # Consulta de procesos activos del usuario en el sistema Linux
+              local conns=$(ps -u "$u_name" -o comm= 2>/dev/null | grep -E 'sshd|bash|sh' | wc -l)
+              if [ "$conns" -gt 0 ]; then
+                echo -e "  👤 Usuario: ${NEON_GREEN}$u_name${RESET} / ${NEON_ORANGE}$conns conexión(es) activa(s)${RESET}"
+              else
+                echo -e "  👤 Usuario: ${GRAY}$u_name${RESET} / ${RED}0 en línea${RESET}"
               fi
-            done < "$USERS_FILE"
-          else
-            info "No hay usuarios creados."
-          fi
-          echo -e "\n${GRAY}Actualizando en 5 segundos... (Ctrl+C para salir)${RESET}"
-          sleep 5
-        done
-        tput cnorm 2>/dev/null || true
-        pausa
+            fi
+          done < "$USERS_FILE"
+        else
+          info "No hay usuarios registrados."
+        fi
+        # Con esto regresas al menú con Enter sin trabarte ni usar Ctrl+C
+        echo
+        echo -ne "${GRAY}Presiona ${NEON_VERDE}[Enter]${GRAY} para regresar al menú...${RESET}"
+        read -r
         ;;
       0) return ;;
     esac
@@ -789,70 +777,47 @@ menu_principal() {
     echo -e "  ${WHITE}BadVPN Gateway :${RESET} ${bv_color}  |  ${WHITE}Puerto:${RESET} ${NEON_GREEN}${BADVPN_PORT}${RESET}"
     echo -e "  ${WHITE}Comandos Ráp.  :${RESET} ${NEON_PINK}adm${RESET} o ${NEON_PINK}admin${RESET}"
     linea
-    echo -e "  ${NEON_GREEN}[1]${RESET} Instalar / Reinstalar o Cambiar Puerto BHTTP"
-    echo -e "  ${NEON_GREEN}[2]${RESET} Gestión de Usuarios y Credenciales"
-    echo -e "  ${NEON_GREEN}[3]${RESET} Activar / Abrir Puerto Personalizado en Firewall"
-    echo -e "  ${NEON_GREEN}[4]${RESET} Panel de Control de Servicios (Iniciar / Parar / Reiniciar)"
-    echo -e "  ${NEON_GREEN}[5]${RESET} Diagnóstico General del Sistema"
-    echo -e "  ${NEON_GREEN}[6]${RESET} Destrucción Total / Desinstalar Script"
+    echo -e "  ${NEON_GREEN}[1]${RESET} Instalar / Reinstalar BHTTP y BadVPN"
+    echo -e "  ${NEON_GREEN}[2]${RESET} Gestionar Usuarios (Crear, Editar, En línea)"
+    echo -e "  ${NEON_GREEN}[3]${RESET} Encender / Apagar BHTTP Server"
+    echo -e "  ${NEON_GREEN}[4]${RESET} Abrir Puertos Manuales (Firewall)"
+    echo -e "  ${NEON_GREEN}[5]${RESET} Optimizar VPS & Configurar BadVPN"
+    echo -e "  ${NEON_GREEN}[6]${RESET} Auto Iniciar Panel al Abrir Terminal"
     echo -e "  ${NEON_GREEN}[7]${RESET} Actualizar Script desde GitHub"
-    echo -e "  ${NEON_GREEN}[8]${RESET} Auto iniciar script [ ${NEON_ORANGE}$AUTOSTART_STATUS${RESET} ]"
-    echo -e "  ${NEON_GREEN}[9]${RESET} Optimizar VPS & BadVPN Controls"
-    echo -e "  ${RED}[0]${RESET} Salir del Panel"
+    echo -e "  ${RED}[0]${RESET} Salir del Script"
     linea
-    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción [1-9, 0]: "
-    read -r opcion
-    case $opcion in
+    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción: "
+    read -r opc
+    case $opc in
       1) instalar_servidor ;;
       2) menu_usuarios ;;
-      3) menu_activar_puertos ;;
-      4) 
-        seccion "CONTROL DE SERVICIOS"
-        echo -e "  [1] Iniciar todo (BHTTP + BadVPN)"
-        echo -e "  [2] Detener todo (BHTTP + BadVPN)"
-        echo -e "  [3] Reiniciar todo"
-        echo -ne "  Selecciona: "
-        read -r st
-        case $st in
-          1) systemctl start "$SERVICE" "$BADVPN_SERVICE"; ok "Iniciados"; pausa ;;
-          2) systemctl stop "$SERVICE" "$BADVPN_SERVICE"; ok "Detenidos"; pausa ;;
-          3) systemctl restart "$SERVICE" "$BADVPN_SERVICE"; ok "Reiniciados"; pausa ;;
-        esac
-        ;;
-      5) 
+      3)
         titulo
-        seccion "DIAGNÓSTICO EN VIVO"
-        echo -e "  IP Pública   : $(obtener_ip_publica)"
-        echo -e "  BHTTP Puerto : ${PUERTO:-No configurado}"
-        echo -e "  BadVPN Puerto: $BADVPN_PORT"
-        echo -e "  Atajo 'adm'  : Activo y Configurado"
+        seccion "CONTROL DE ESTADO BHTTP SERVER"
+        if [ "$estado" = "active" ]; then
+          systemctl stop "$SERVICE" 2>/dev/null
+          systemctl disable "$SERVICE" 2>/dev/null
+          ok "¡Servidor BHTTP detenido y apagado (OFF)!"
+        else
+          systemctl enable "$SERVICE" 2>/dev/null
+          systemctl start "$SERVICE" 2>/dev/null
+          ok "¡Servidor BHTTP encendido y activo (ON)!"
+        fi
         pausa
         ;;
-      6) 
-        seccion "DESTRUCCIÓN TOTAL"
-        echo -ne " ${RED}⚠ ¿Eliminar todo por completo? (s/n): ${RESET}"
-        read -r confirmar
-        if [[ "$confirmar" =~ ^[sS]$ ]]; then
-          systemctl stop "$SERVICE" "$BADVPN_SERVICE" 2>/dev/null
-          systemctl disable "$SERVICE" "$BADVPN_SERVICE" 2>/dev/null
-          rm -rf "$UNIT" "$BADVPN_UNIT" "$DESTDIR" "$CONFIG_DIR" "$SCRIPT_PATH" "$ADM_BIN" "$ADMIN_BIN" 2>/dev/null
-          for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
-            [ -f "$rc" ] && sed -i '/alias adm=/d' "$rc" 2>/dev/null && sed -i '/alias admin=/d' "$rc" 2>/dev/null && sed -i '/intalar\.sh/d' "$rc" 2>/dev/null
-          done
-          systemctl daemon-reload
-          ok "¡Destrucción total completada!"
-          exit 0
-        fi
-        ;;
+      4) menu_activar_puertos ;;
+      5) menu_optimizar_vps ;;
+      6) menu_autostart ;;
       7) actualizar_script ;;
-      8) menu_autostart ;;
-      9) menu_optimizar_vps ;;
-      0) echo -e "\n ${NEON_GREEN}¡Hasta luego, Hazael!${RESET}\n"; exit 0 ;;
-      *) fail "Opción inválida"; pausa ;;
+      0) clear_screen; exit 0 ;;
+      *) fail "Opción inválida."; pausa ;;
     esac
   done
 }
 
+# ==============================================================================
+# INICIO DE EJECUCIÓN PRINCIPAL
+# ==============================================================================
 check_root
 cargar_config
 menu_principal
