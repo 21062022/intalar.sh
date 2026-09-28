@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v7.1 (Todo OFF por defecto & Sin Borrar Nada)
+#        PREMIUM SERVER EDITION v7.2 (Todo OFF por defecto & Sin Borrar Nada)
 # ==============================================================================
 
 set -o pipefail
@@ -44,13 +44,13 @@ USERS_FILE="$CONFIG_DIR/cuentas.txt"
 SCRIPT_PATH="/usr/local/bin/intalar.sh"
 ADM_BIN="/usr/local/bin/adm"
 ADMIN_BIN="/usr/local/bin/admin"
-CANDIDATOS=(8080 80 8443 443 2082 2095 8880 2052 3128)
 
 PUERTO=""
 SSHPORT=22
 BADVPN_PORT=7300
 BADVPN_STATUS="OFF"
 AUTOSTART_STATUS="OFF"
+CRON_STATUS="OFF"
 
 # ==============================================================================
 # CONFIGURACIÓN BLINDADA DE COMANDOS RÁPIDOS ("adm" / "admin")
@@ -135,7 +135,7 @@ titulo() {
     ip_maquina=$(obtener_ip_publica)
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.1${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.2${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
     echo
@@ -174,6 +174,7 @@ cargar_config() {
   [ -z "${BADVPN_PORT:-}" ] && BADVPN_PORT=7300
   [ -z "${BADVPN_STATUS:-}" ] && BADVPN_STATUS="OFF"
   [ -z "${AUTOSTART_STATUS:-}" ] && AUTOSTART_STATUS="OFF"
+  [ -z "${CRON_STATUS:-}" ] && CRON_STATUS="OFF"
 }
 
 guardar_config() {
@@ -184,6 +185,7 @@ SSHPORT=${SSHPORT}
 BADVPN_PORT=${BADVPN_PORT}
 BADVPN_STATUS=${BADVPN_STATUS}
 AUTOSTART_STATUS=${AUTOSTART_STATUS}
+CRON_STATUS=${CRON_STATUS}
 EOF
 }
 
@@ -196,7 +198,7 @@ instalar_badvpn() {
 
     cat > "$BADVPN_UNIT" <<EOF
 [Unit]
-Description=BadVPN UDP Gateway
+Description=BadVPN UDP Gateway (Estabilidad de Llamadas y Juegos)
 After=network.target
 
 [Service]
@@ -214,15 +216,6 @@ EOF
     systemctl disable "$BADVPN_SERVICE" >/dev/null 2>&1
     systemctl stop "$BADVPN_SERVICE" >/dev/null 2>&1
 }
-
-ocupados() {
-  if command -v ss >/dev/null 2>&1; then
-    ss -tln 2>/dev/null | tail -n +2 | awk '{print $4}' | sed 's/.*://'
-  elif command -v netstat >/dev/null 2>&1; then
-    netstat -tln 2>/dev/null | awk '/^tcp/ {print $4}' | sed 's/.*://'
-  fi | grep -E '^[0-9]+$' | sort -u
-}
-libre() { ! ocupados | grep -qx "$1"; }
 
 instalar_servidor() {
   titulo
@@ -410,7 +403,7 @@ EOF
 }
 
 # ==============================================================================
-# GESTIÓN DE USUARIOS MEJORADA (CREAR, DETALLES, ELIMINAR, EDITAR, EN LÍNEA)
+# GESTIÓN DE USUARIOS
 # ==============================================================================
 crear_usuario() {
   local u="$1" p="$2" dias="$3"
@@ -576,7 +569,6 @@ menu_usuarios() {
             local u_name
             u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
             if [ -n "$u_name" ]; then
-              # Consulta de procesos activos del usuario en el sistema Linux
               local conns=$(ps -u "$u_name" -o comm= 2>/dev/null | grep -E 'sshd|bash|sh' | wc -l)
               if [ "$conns" -gt 0 ]; then
                 echo -e "  👤 Usuario: ${NEON_GREEN}$u_name${RESET} / ${NEON_ORANGE}$conns conexión(es) activa(s)${RESET}"
@@ -588,9 +580,8 @@ menu_usuarios() {
         else
           info "No hay usuarios registrados."
         fi
-        # Con esto regresas al menú con Enter sin trabarte ni usar Ctrl+C
         echo
-        echo -ne "${GRAY}Presiona ${NEON_VERDE}[Enter]${GRAY} para regresar al menú...${RESET}"
+        echo -ne "${GRAY}Presiona ${NEON_GREEN}[Enter]${GRAY} para regresar al menú...${RESET}"
         read -r
         ;;
       0) return ;;
@@ -599,7 +590,7 @@ menu_usuarios() {
 }
 
 # ==============================================================================
-# ACTIVADOR Y APERTURA MANUAL DE PUERTOS
+# APERTURA MANUAL DE PUERTOS
 # ==============================================================================
 menu_activar_puertos() {
   while true; do
@@ -615,7 +606,7 @@ menu_activar_puertos() {
       ok "¡El puerto $p_ingresado ya está abierto y aceptando tráfico!"
     else
       fail "Número de puerto inválido."
-    fi
+    end
     
     echo
     echo -ne " ${SKY}◆${RESET} ¿Deseas abrir otro puerto? (s/n): "
@@ -625,31 +616,24 @@ menu_activar_puertos() {
 }
 
 # ==============================================================================
-# OPTIMIZAR VPS & BADVPN CONFIG (PUERTOS 7300 o 7200)
+# BADVPN GATEWAY Y ESTABILIDAD UDP (LLAMADAS Y JUEGOS) - APARTADO [5]
 # ==============================================================================
 menu_optimizar_vps() {
   while true; do
     titulo
-    seccion "OPTIMIZACIÓN DE RECURSOS & BADVPN GATEWAY"
+    seccion "CONFIGURACIÓN DE BADVPN GATEWAY (UDP PARA JUEGOS Y VOIP)"
     echo -e "  ${WHITE}Estado Actual BadVPN:${RESET} [ ${NEON_ORANGE}$BADVPN_STATUS${RESET} ] (Puerto: $BADVPN_PORT)"
+    echo -e "  ${GRAY}BadVPN mejora la latencia y asegura estabilidad UDP para llamadas y juegos.${RESET}"
     linea
-    echo -e "  ${NEON_GREEN}[1]${RESET} Refrescar / Limpiar memoria RAM y Caché del Sistema"
-    echo -e "  ${NEON_GREEN}[2]${RESET} Activar / Cambiar BadVPN (Puerto 7300)"
-    echo -e "  ${NEON_GREEN}[3]${RESET} Activar / Cambiar BadVPN (Puerto 7200)"
-    echo -e "  ${NEON_GREEN}[4]${RESET} Apagar BadVPN (OFF)"
+    echo -e "  ${NEON_GREEN}[1]${RESET} Activar / Encender BadVPN en el Puerto ${YELLOW}7300${RESET}"
+    echo -e "  ${NEON_GREEN}[2]${RESET} Activar / Encender BadVPN en el Puerto ${YELLOW}7200${RESET}"
+    echo -e "  ${NEON_GREEN}[3]${RESET} Apagar BadVPN Gateway (OFF)"
     echo -e "  ${RED}[0]${RESET} Regresar"
     linea
     echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción: "
     read -r opt_opt
     case $opt_opt in
       1)
-        info "Liberando búferes de caché y optimizando memoria RAM..."
-        sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
-        swapoff -a && swapon -a 2>/dev/null || true
-        ok "¡Sistema optimizado y memoria refrescada con éxito!"
-        pausa
-        ;;
-      2)
         BADVPN_PORT=7300
         instalar_badvpn
         systemctl enable "$BADVPN_SERVICE" >/dev/null 2>&1
@@ -657,10 +641,10 @@ menu_optimizar_vps() {
         abrir_puerto_sistema "$BADVPN_PORT"
         BADVPN_STATUS="ON (7300)"
         guardar_config
-        ok "¡BadVPN activado en el puerto 7300!"
+        ok "¡BadVPN activado exitosamente en el puerto 7300!"
         pausa
         ;;
-      3)
+      2)
         BADVPN_PORT=7200
         instalar_badvpn
         systemctl enable "$BADVPN_SERVICE" >/dev/null 2>&1
@@ -668,10 +652,10 @@ menu_optimizar_vps() {
         abrir_puerto_sistema "$BADVPN_PORT"
         BADVPN_STATUS="ON (7200)"
         guardar_config
-        ok "¡BadVPN activado en el puerto 7200!"
+        ok "¡BadVPN activado exitosamente en el puerto 7200!"
         pausa
         ;;
-      4)
+      3)
         systemctl stop "$BADVPN_SERVICE" 2>/dev/null
         systemctl disable "$BADVPN_SERVICE" 2>/dev/null
         BADVPN_STATUS="OFF"
@@ -685,7 +669,7 @@ menu_optimizar_vps() {
 }
 
 # ==============================================================================
-# AUTO INICIAR SCRIPT EN TERMINAL (CONFIGURABLE ON/OFF)
+# AUTO INICIAR SCRIPT EN TERMINAL - OPCIÓN [8]
 # ==============================================================================
 menu_autostart() {
   while true; do
@@ -723,6 +707,56 @@ menu_autostart() {
           fi
         done
         ok "¡Auto iniciar desactivado (OFF)!"
+        pausa
+        ;;
+      0) return ;;
+    esac
+  done
+}
+
+# ==============================================================================
+# OPTIMIZACIÓN AUTOMÁTICA CADA 6 HORAS (RAM Y CPU) - OPCIÓN [9]
+# ==============================================================================
+ejecutar_optimizacion_manual() {
+  sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+  swapoff -a && swapon -a 2>/dev/null || true
+}
+
+menu_optimizacion_automatica() {
+  while true; do
+    titulo
+    seccion "OPTIMIZACIÓN AUTOMÁTICA CADA 6 HORAS (RAM Y CPU)"
+    echo -e "  ${WHITE}Estado actual Optimización Automática:${RESET} [ ${NEON_ORANGE}$CRON_STATUS${RESET} ]"
+    echo -e "  ${GRAY}Libera memoria RAM, búferes de caché y previene saturaciones del sistema.${RESET}"
+    linea
+    echo -e "  ${NEON_GREEN}[1]${RESET} Activar optimización automática cada 6 horas (ON)"
+    echo -e "  ${NEON_GREEN}[2]${RESET} Desactivar optimización automática (OFF)"
+    echo -e "  ${NEON_GREEN}[3]${RESET} Ejecutar optimización de memoria y CPU ahora mismo"
+    echo -e "  ${RED}[0]${RESET} Regresar"
+    linea
+    echo -ne " ${NEON_ORANGE}◆${RESET} Opción: "
+    read -r cron_op
+    case $cron_op in
+      1)
+        CRON_STATUS="ON"
+        guardar_config
+        # Agregar tarea cron que corre cada 6 horas
+        local cron_cmd="0 */6 * * * sync && echo 3 > /proc/sys/vm/drop_caches >/dev/null 2>&1"
+        (crontab -l 2>/dev/null | grep -v "drop_caches"; echo "$cron_cmd") | crontab -
+        ok "¡Optimización automática cada 6 horas activada con éxito!"
+        pausa
+        ;;
+      2)
+        CRON_STATUS="OFF"
+        guardar_config
+        (crontab -l 2>/dev/null | grep -v "drop_caches") | crontab - 2>/dev/null || true
+        ok "¡Optimización automática desactivada (OFF)!"
+        pausa
+        ;;
+      3)
+        info "Liberando búferes y optimizando recursos del servidor..."
+        ejecutar_optimizacion_manual
+        ok "¡Sistema optimizado al 100% con éxito!"
         pausa
         ;;
       0) return ;;
@@ -781,9 +815,11 @@ menu_principal() {
     echo -e "  ${NEON_GREEN}[2]${RESET} Gestionar Usuarios (Crear, Editar, En línea)"
     echo -e "  ${NEON_GREEN}[3]${RESET} Encender / Apagar BHTTP Server"
     echo -e "  ${NEON_GREEN}[4]${RESET} Abrir Puertos Manuales (Firewall)"
-    echo -e "  ${NEON_GREEN}[5]${RESET} Optimizar VPS & Configurar BadVPN"
-    echo -e "  ${NEON_GREEN}[6]${RESET} Auto Iniciar Panel al Abrir Terminal"
-    echo -e "  ${NEON_GREEN}[7]${RESET} Actualizar Script desde GitHub"
+    echo -e "  ${NEON_GREEN}[5]${RESET} BadVPN Gateway (Puertos 7200 o 7300 / UDP Juegos)"
+    echo -e "  ${NEON_GREEN}[6]${RESET} Actualizar Script desde GitHub"
+    echo -e "  ${NEON_GREEN}[7]${RESET} (Extra) Liberar Memoria RAM Manual"
+    echo -e "  ${NEON_GREEN}[8]${RESET} Auto Iniciar Script al Abrir Terminal"
+    echo -e "  ${NEON_GREEN}[9]${RESET} Optimización Automática Cada 6 Horas (RAM y CPU)"
     echo -e "  ${RED}[0]${RESET} Salir del Script"
     linea
     echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción: "
@@ -807,8 +843,15 @@ menu_principal() {
         ;;
       4) menu_activar_puertos ;;
       5) menu_optimizar_vps ;;
-      6) menu_autostart ;;
-      7) actualizar_script ;;
+      6) actualizar_script ;;
+      7)
+        info "Liberando búferes y optimizando memoria..."
+        ejecutar_optimizacion_manual
+        ok "¡Memoria RAM liberada con éxito!"
+        pausa
+        ;;
+      8) menu_autostart ;;
+      9) menu_optimizacion_automatica ;;
       0) clear_screen; exit 0 ;;
       *) fail "Opción inválida."; pausa ;;
     esac
