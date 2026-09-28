@@ -1,3 +1,4 @@
+cat << 'EOF' > /usr/local/bin/intalar.sh
 #!/usr/bin/env bash
 # ==============================================================================
 # INSTALADOR DE SCRIPTS MÚLTIPLES DE HAZAEL MORENO - EDICIÓN ULTRA CIBERNÉTICA
@@ -5,38 +6,38 @@
 # EDICIÓN DE SERVIDOR PREMIUM v6.6 (Puerto Personalizable y Corrección de administrador)
 # ==============================================================================
 
-establecer -o fallo de tubería
+set -o pipefail
 
 # ==============================================================================
 # PALETA DE COLORES VIBRANTES Y NEÓN
 # ==============================================================================
-REINICIAR="\e[0m"
-NEGRITA="\e[1m"
+RESET="\e[0m"
+BOLD="\e[1m"
 DIM="\e[2m"
 
-ROJO="\e[1;91m"
+RED="\e[1;91m"
 VERDE="\e[1;92m"
 AMARILLO="\e[1;93m"
 AZUL="\e[1;94m"
 MAGENTA="\e[1;95m"
 CYAN="\e[1;96m"
-BLANCO="\e[1;97m"
-GRIS="\e[1;90m"
+WHITE="\e[1;97m"
+GRAY="\e[1;90m"
 
-CIELO="\e[38;5;117m"
-NEÓN_AZUL="\e[38;5;39m"
-NEÓN_VERDE="\e[38;5;46m"
-NEÓN_ROSA="\e[38;5;198m"
-NEÓN_NARANJA="\e[38;5;208m"
+SKY="\e[38;5;117m"
+NEON_AZUL="\e[38;5;39m"
+NEON_VERDE="\e[38;5;46m"
+NEON_ROSA="\e[38;5;198m"
+NEON_NARANJA="\e[38;5;208m"
 
 # ==============================================================================
-#RUTAS Y DIRECTORIOS DEL SISTEMA
+# RUTAS Y DIRECTORIOS DEL SISTEMA
 # ==============================================================================
 DESTDIR="/usr/local/lib/bhttp"
 SERVER_PY="$DESTDIR/bhttp-server.py"
 UNIT="/etc/systemd/system/bhttp.service"
 BADVPN_UNIT="/etc/systemd/system/badvpn.service"
-SERVICIO="bhttp"
+SERVICE="bhttp"
 BADVPN_SERVICE="badvpn"
 CONFIG_DIR="/etc/bhttp"
 CONFIG="$CONFIG_DIR/nullcore.conf"
@@ -44,10 +45,9 @@ USERS_FILE="$CONFIG_DIR/cuentas.txt"
 SCRIPT_PATH="/usr/local/bin/intalar.sh"
 ADM_BIN="/usr/local/bin/adm"
 ADMIN_BIN="/usr/local/bin/admin"
-CANDIDATOS=(8080 80 8443 443 2082 2095 8880 2052 3128)
 
-PUERTO=""
-Puerto SSH=22
+PUERTO="8080"
+SSHPORT=22
 BADVPN_PORT=7300
 
 # ==============================================================================
@@ -59,44 +59,44 @@ configurar_atajo_adm() {
   fi
   chmod +x "$SCRIPT_PATH" 2>/dev/null || true
 
-  cat > "$ADM_BIN" << 'EOF'
+  cat > "$ADM_BIN" << 'EOF_A'
 #!/usr/bin/env bash
 exec sudo bash /usr/local/bin/intalar.sh "$@"
-EOF
+EOF_A
   chmod +x "$ADM_BIN"
 
-  cat > "$ADMIN_BIN" << 'EOF'
+  cat > "$ADMIN_BIN" << 'EOF_B'
 #!/usr/bin/env bash
 exec sudo bash /usr/local/bin/intalar.sh "$@"
-EOF
+EOF_B
   chmod +x "$ADMIN_BIN"
 
-  para rc en /root/.bashrc /root/.zshrc /etc/bash.bashrc; hacer
+  for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
     if [ -f "$rc" ] || [ "$rc" = "/root/.bashrc" ]; then
-      tocar "$rc" 2>/dev/null
+      touch "$rc" 2>/dev/null
       sed -i '/alias adm=/d' "$rc" 2>/dev/null
       sed -i '/alias admin=/d' "$rc" 2>/dev/null
       echo "alias adm='sudo bash /usr/local/bin/intalar.sh'" >> "$rc"
       echo "alias admin='sudo bash /usr/local/bin/intalar.sh'" >> "$rc"
     fi
-  hecho
+  done
 }
 
 # ==============================================================================
-#GESTIÓN GLOBAL DE FIREWALL (UFW E IPTABLES AUTOMÁTICO)
+# GESTIÓN GLOBAL DE FIREWALL
 # ==============================================================================
 abrir_puerto_sistema() {
     local p_custom="$1"
     info "Aplicando reglas de red y firewall para el puerto $p_custom..."
 
-    Si el comando -v ufw >/dev/null 2>&1; entonces
-        ufw permite "$p_custom"/tcp >/dev/null 2>&1
-        ufw permite "$BADVPN_PORT"/tcp >/dev/null 2>&1
-        ufw permitir 22/tcp >/dev/null 2>&1
-        ufw recargar >/dev/null 2>&1 || verdadero
+    if command -v ufw >/dev/null 2>&1; then
+        ufw allow "$p_custom"/tcp >/dev/null 2>&1
+        ufw allow "$BADVPN_PORT"/tcp >/dev/null 2>&1
+        ufw allow 22/tcp >/dev/null 2>&1
+        ufw reload >/dev/null 2>&1 || true
     fi
 
-    Si el comando -v iptables >/dev/null 2>&1; entonces
+    if command -v iptables >/dev/null 2>&1; then
         iptables -A INPUT -p tcp --dport "$p_custom" -j ACCEPT 2>/dev/null || true
         iptables -A INPUT -p tcp --dport "$BADVPN_PORT" -j ACCEPT 2>/dev/null || true
         iptables -A INPUT -p tcp --dport 22 -j ACCEPT 2>/dev/null || true
@@ -105,7 +105,7 @@ abrir_puerto_sistema() {
         iptables -A INPUT -p tcp --dport 8080 -j ACCEPT 2>/dev/null || true
         iptables -A INPUT -p tcp --dport 8880 -j ACCEPT 2>/dev/null || true
         
-        Si el comando -v netfilter-persistent >/dev/null 2>&1; entonces
+        if command -v netfilter-persistent >/dev/null 2>&1; then
             netfilter-persistent save >/dev/null 2>&1 || true
         elif [ -d /etc/iptables ]; then
             iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
@@ -118,40 +118,40 @@ abrir_puerto_sistema() {
 # INTERFAZ VISUAL CYBERPUNK
 # ==============================================================================
 clear_screen() { clear 2>/dev/null || true; }
-linea() { eco -e "${NEON_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"; }
+linea() { echo -e "${NEON_AZUL}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"; }
 
-título() {
-    pantalla limpia
-    echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD} HAZAEL MORENO MULTI SCRIPT${RESET} ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD} BHTTP V.1 & BADVPN PROTOCOL v6.6${RESET} ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}╚════════════════════════════════════════════════════════════════╝${RESET}"
-    echo -e "${SKY} 🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• TUNELIZACIÓN MÁXIMA PRO 🚀${RESET}"
-    eco
+titulo() {
+    clear_screen
+    echo -e "${NEON_ROSA}╔══════════════════════════════════════════════════════════════╗${RESET}"
+    echo -e "${NEON_ROSA}║${RESET} ${NEON_VERDE}${BOLD} HAZAEL MORENO MULTI SCRIPT${RESET} ${NEON_ROSA}║${RESET}"
+    echo -e "${NEON_ROSA}║${RESET} ${NEON_AZUL}${BOLD} BHTTP V.1 & BADVPN PROTOCOL v6.6${RESET} ${NEON_ROSA}║${RESET}"
+    echo -e "${NEON_ROSA}╚══════════════════════════════════════════════════════════════╝${RESET}"
+    echo -e "${SKY} 🚀 ${NEON_NARANJA}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• TUNELIZACIÓN MÁXIMA PRO 🚀${RESET}"
+    echo
 }
 
-sección() {
-    eco
-    eco -e "${MAGENTA}┌──────────────────────────────── ──────────────────────────────────┐${RESET}"
+seccion() {
+    echo
+    echo -e "${MAGENTA}┌──────────────────────────────────────────────────────────────────┐${RESET}"
     echo -e "${MAGENTA}│${RESET} ${WHITE}${BOLD} $1${RESET}"
-    eco -e "${MAGENTA}└──────────────────────────────── ──────────────────────────────────┘${RESET}"
-    eco
+    echo -e "${MAGENTA}└──────────────────────────────────────────────────────────────────┘${RESET}"
+    echo
 }
 
-ok() { echo -e " ${NEON_GREEN}✔ [ÉXITO]${RESET} ${WHITE}$1${RESET}"; }
+ok() { echo -e " ${NEON_VERDE}✔ [ÉXITO]${RESET} ${WHITE}$1${RESET}"; }
 info() { echo -e " ${SKY}◆ [INFO]${RESET} ${WHITE}$1${RESET}"; }
 fail() { echo -e " ${RED}✖ [ERROR]${RESET} ${WHITE}$1${RESET}"; }
 
 pausa() {
-    eco
-    echo -e "${GRAY} Presiona ${NEON_GREEN}[Enter]${GRAY} para regresar...${RESET}"
-    leer -r
+    echo
+    echo -e "${GRAY} Presiona ${NEON_VERDE}[Enter]${GRAY} para regresar...${RESET}"
+    read -r
 }
 
 check_root() {
   if [ "$(id -u 2>/dev/null || echo 0)" != 0 ]; then
     fail "Este script debe ejecutarse como root: sudo bash $0"
-    Salida 2
+    exit 2
   fi
 }
 
@@ -165,7 +165,7 @@ cargar_config() {
 
 guardar_config() {
   mkdir -p "$CONFIG_DIR"
-  gato > "$CONFIG" <<EOF
+  cat > "$CONFIG" <<EOF
 PUERTO=${PUERTO}
 SSHPORT=${SSHPORT}
 BADVPN_PORT=${BADVPN_PORT}
@@ -177,21 +177,21 @@ EOF
 # ==============================================================================
 instalar_badvpn() {
     apt-get update -y >/dev/null 2>&1
-    apt-get install -y cmake g++ make wget curl badvpn iptables-persistent 2>/dev/null || true
+    apt-get install -y cmake g++ make wget curl iptables-persistent 2>/dev/null || true
 
     cat > "$BADVPN_UNIT" <<EOF
-[Unidad]
-Descripción=Puerta de enlace UDP de BadVPN
-Después=red.objetivo
+[Unit]
+Description=BadVPN UDP Gateway
+After=network.target
 
-[Servicio]
-Tipo=simple
-Usuario=root
+[Service]
+Type=simple
+User=root
 ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:$BADVPN_PORT --max-clients 500 --max-connections 1000
-Reiniciar=siempre
-ReiniciarSec=3
+Restart=always
+RestartSec=3
 
-[Instalar]
+[Install]
 WantedBy=multi-user.target
 EOF
 
@@ -200,30 +200,21 @@ EOF
     systemctl restart "$BADVPN_SERVICE"
 }
 
-ocupados() {
-  Si el comando -v ss >/dev/null 2>&1; entonces
-    ss -tln 2>/dev/null | tail -n +2 | awk '{print $4}' | sed 's/.*://'
-  elif command -v netstat >/dev/null 2>&1; then
-    netstat -tln 2>/dev/null | awk '/^tcp/ {imprimir $4}' | sed 's/.*://'
-  fi | grep -E '^[0-9]+$' | ordenar -u
-}
-libre() { ! ocupados | grep -qx "$1"; }
-
 instalar_servidor() {
-  título
-  sección "INSTALACIÓN Y CONFIGURACIÓN DE PUERTO BHTTP"
+  titulo
+  seccion "INSTALACIÓN Y CONFIGURACIÓN DE PUERTO BHTTP"
   
-  comando -v python3 >/dev/null 2>&1 || { falla "Python3 no está instalado."; pausa; devolver 1; }
+  command -v python3 >/dev/null 2>&1 || { fail "Python3 no está instalado."; pausa; return 1; }
   
   local sugerido="${PUERTO:-8080}"
-  echo -e " ${WHITE}Puerto BHTTP actual/sugerido:${RESET} ${NEON_GREEN}$sugerido${RESET}"
+  echo -e " ${WHITE}Puerto BHTTP actual/sugerido:${RESET} ${NEON_VERDE}$sugerido${RESET}"
   echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el nuevo puerto BHTTP (Presiona Enter para mantener $sugerido): "
-  leer -r nuevo_puerto
+  read -r nuevo_puerto
   
-  si [ -n "$nuevo_puerto" ]; entonces
-    if [[ "$nuevo_puerto" =~ ^[0-9]+$ ]] && [ "$nuevo_puerto" -gt 0 ] && [ "$nuevo_puerto" -le 65535 ]; entonces
+  if [ -n "$nuevo_puerto" ]; then
+    if [[ "$nuevo_puerto" =~ ^[0-9]+$ ]] && [ "$nuevo_puerto" -gt 0 ] && [ "$nuevo_puerto" -le 65535 ]; then
       PUERTO="$nuevo_puerto"
-    demás
+    else
       fail "Puerto inválido. Se mantendrá el puerto anterior: $sugerido"
     fi
   fi
@@ -233,101 +224,107 @@ instalar_servidor() {
   mkdir -p "$DESTDIR"
   cat > "$SERVER_PY" << 'PYEOF'
 #!/usr/bin/env python3
-import argparse, asyncio, hashlib, struct, sys
+import argparse, asyncio, hashlib, sys
+
 MAGIC = b"BHP1"
-LONGOPA = 2.0
+LONGPOLL = 2.0
+
 def keystream(sess, mode, seq, d, n):
     base = hashlib.sha256(sess + bytes([mode]) + seq.to_bytes(8, "big") + bytes([d]))
     out = bytearray(); c = 0
-    mientras len(out) < n:
+    while len(out) < n:
         h = base.copy(); h.update(c.to_bytes(4, "big")); out += h.digest(); c += 1
-    devolver bytes(out[:n])
-def máscara(datos, sesión, modo, secuencia, d):
-    return bytes(a ^ b para a, b en zip(data, keystream(sess, mode, seq, d, len(data))))
-def probe_reply(modo, tamaño):
-    n = tamaño si (modo == 2 y tamaño >= 10) de lo contrario 10
+    return bytes(out[:n])
+
+def mask(data, sess, mode, seq, d):
+    return bytes(a ^ b for a, b in zip(data, keystream(sess, mode, seq, d, len(data))))
+
+def probe_reply(mode, size):
+    n = size if (mode == 2 and size >= 10) else 10
     out = bytearray(MAGIC + bytes([1, mode]) + size.to_bytes(4, "big"))
-    para i en rango(10, n): out.append((i * 31) & 255)
-    devolver bytes(salida)
-Sesión de clase:
+    for i in range(10, n): out.append((i * 31) & 255)
+    return bytes(out)
+
+class Session:
     def __init__(self, sess, backend):
         self.sess = sess; self.backend = backend
         self.cond = asyncio.Condition(); self.up_next = 0; self.up_pending = {}
         self.down_raw = bytearray(); self.down_chunks = {}; self.down_assign = 0
-        self.eof = Falso; self.closed = Falso; self.br = Ninguno; self.bw = Ninguno
+        self.eof = False; self.closed = False; self.br = None; self.bw = None
     async def connect(self):
-        host, puerto = self.backend
+        host, port = self.backend
         self.br, self.bw = await asyncio.open_connection(host, port)
         asyncio.create_task(self._reader())
     async def _reader(self):
-        intentar:
-            mientras que verdadero:
-                datos = esperar a que se lea el texto completo (65536)
-                Si no hay datos: salir
-                asíncrono con self.cond: self.down_raw += data; self.cond.notify_all()
-        excepto Excepción: pasar
-        finalmente:
-            asíncrono con self.cond: self.eof = True; self.cond.notify_all()
+        try:
+            while True:
+                data = await self.br.read(65536)
+                if not data: break
+                async with self.cond: self.down_raw += data; self.cond.notify_all()
+        except Exception: pass
+        finally:
+            async with self.cond: self.eof = True; self.cond.notify_all()
     async def upload(self, seq, data):
-        asíncrono con self.cond:
-            Si hay datos: self.up_pending[seq] = datos
-            mientras self.up_next esté en self.up_pending:
-                fragmento = self.up_pending.pop(self.up_next)
-                intentar: self.bw.write(chunk); esperar self.bw.drain()
-                excepto Exception: self.closed = True
+        async with self.cond:
+            if data: self.up_pending[seq] = data
+            while self.up_next in self.up_pending:
+                chunk = self.up_pending.pop(self.up_next)
+                try: self.bw.write(chunk); await self.bw.drain()
+                except Exception: self.closed = True
                 self.up_next += 1
     async def download(self, seq, maxlen, deadline):
-        Si maxlen <= 0: maxlen = 1399
-        bucle = asyncio.get_running_loop()
-        asíncrono con self.cond:
-            mientras que verdadero:
+        if maxlen <= 0: maxlen = 1399
+        loop = asyncio.get_running_loop()
+        async with self.cond:
+            while True:
                 if seq < self.down_assign: return self.down_chunks.get(seq, b"")
-                si seq == self.down_assign:
-                    si self.down_raw:
-                        tomar = bytes(self.down_raw[:maxlen]); del self.down_raw[:maxlen]
-                        self.down_chunks[self.down_assign] = tomar; self.down_assign += 1
-                        self.cond.notify_all(); return tomar
+                if seq == self.down_assign:
+                    if self.down_raw:
+                        take = bytes(self.down_raw[:maxlen]); del self.down_raw[:maxlen]
+                        self.down_chunks[self.down_assign] = take; self.down_assign += 1
+                        self.cond.notify_all(); return take
                     if self.eof: self.down_assign += 1; self.cond.notify_all(); return b""
-                Si no es self.eof y loop.time() < deadline:
+                if not self.eof and loop.time() < deadline:
                     try: await asyncio.wait_for(self.cond.wait(), timeout=max(0.01, deadline - loop.time()))
-                    excepto asyncio.TimeoutError: pasar
-                    continuar
-                mientras self.down_assign <= seq: self.down_assign += 1
+                    except asyncio.TimeoutError: pass
+                    continue
+                while self.down_assign <= seq: self.down_assign += 1
                 self.cond.notify_all(); return b""
     async def ack(self, seq):
-        asíncrono con self.cond:
-            para k en [k para k en self.down_chunks si k <= seq]: del self.down_chunks[k]
+        async with self.cond:
+            for k in [k for k in self.down_chunks if k <= seq]: del self.down_chunks[k]
     async def close(self):
-        asíncrono con self.cond: self.closed = True; self.cond.notify_all()
-        intentar: self.bw.close()
-        excepto Excepción: pasar
-clase Servidor:
-    def __init__(self, host, puerto, backend):
-        host, puerto, backend = host, puerto, backend
+        async with self.cond: self.closed = True; self.cond.notify_all()
+        try: self.bw.close()
+        except Exception: pass
+
+class Server:
+    def __init__(self, host, port, backend):
+        self.host = host; self.port = port; self.backend = backend
         self.sessions = {}; self.slock = asyncio.Lock()
     async def get_session(self, sess):
-        asíncrono con self.slock:
+        async with self.slock:
             s = self.sessions.get(sess)
-            Si s es None o s.closed:
-                para old_sid, old en list(self.sessions.items()):
+            if s is None or s.closed:
+                for old_sid, old in list(self.sessions.items()):
                     if old_sid != sess: await old.close(); del self.sessions[old_sid]
                 s = Session(sess, self.backend); await s.connect(); self.sessions[sess] = s
-            retornos
+            return s
     async def handle(self, reader, writer):
-        intentar:
-            mientras que verdadero:
-                hdr = esperar lector.readexactly(29)
-                modo = hdr[0]; sess = hdr[1:17]; seq = int.from_bytes(hdr[17:25], "big"); ln = int.from_bytes(hdr[25:29], "big")
-                carga útil = b""
-                Si ln y moda están en (0, 1, 2, 3):
+        try:
+            while True:
+                hdr = await reader.readexactly(29)
+                mode = hdr[0]; sess = hdr[1:17]; seq = int.from_bytes(hdr[17:25], "big"); ln = int.from_bytes(hdr[25:29], "big")
+                payload = b""
+                if ln > 0 and mode in (0, 1, 2, 3):
                     raw = await reader.readexactly(ln); payload = mask(raw, sess, mode, seq, 0)
-                si payload[:4] == MAGIC:
-                    tamaño = int.from_bytes(payload[6:10], "big") if len(payload) >= 10 else 0
-                    pmode = payload[5] si len(payload) >= 6 sino mode
-                    cuerpo = máscara(respuesta_de_probe(pmode, tamaño), sess, modo, seq, 1)
-                    escritor.write(bytes([0]) + len(cuerpo).to_bytes(4, "grande") + cuerpo); await escritor.drain(); continuar
+                if payload[:4] == MAGIC:
+                    size = int.from_bytes(payload[6:10], "big") if len(payload) >= 10 else 0
+                    pmode = payload[5] if len(payload) >= 6 else mode
+                    body = mask(probe_reply(pmode, size), sess, mode, seq, 1)
+                    writer.write(bytes([0]) + len(body).to_bytes(4, "big") + body); await writer.drain(); continue
                 s = await self.get_session(sess)
-                si modo == 1:
+                if mode == 1:
                     await s.upload(seq, payload); writer.write(bytes([0]) + (0).to_bytes(4, "big")); await writer.drain()
                 elif mode == 2:
                     chunk = await s.download(seq, ln if ln > 0 else 1399, asyncio.get_running_loop().time() + LONGPOLL)
@@ -335,26 +332,27 @@ clase Servidor:
                 elif mode == 3:
                     chunk_size = 1399; count = 1
                     if len(payload) >= 6: chunk_size = int.from_bytes(payload[0:4], "big"); count = payload[5]
-                    fecha límite = asyncio.get_running_loop().time() + LONGPOLL
-                    para i en rango(conteo):
-                        fragmento = esperar s.download(seq + i, tamaño_fragmento, fecha límite)
+                    deadline = asyncio.get_running_loop().time() + LONGPOLL
+                    for i in range(count):
+                        chunk = await s.download(seq + i, chunk_size, deadline)
                         self._send_data(writer, sess, mode, seq + i, chunk)
-                    esperar escritor.drenar()
+                    await writer.drain()
                 elif mode == 4:
                     await s.ack(seq); writer.write(bytes([0]) + (0).to_bytes(4, "big")); await writer.drain()
-                de lo contrario: regresar
-        excepto Excepción: pasar
-        finalmente:
-            Intentar: escritor.cerrar()
-            excepto Excepción: pasar
+                else: return
+        except Exception: pass
+        finally:
+            try: writer.close()
+            except Exception: pass
     def _send_data(self, writer, sess, mode, seq, data):
-        real = len(datos)
-        enmascarado = máscara(datos, sesión, modo, secuencia, 1) si datos sino b""
-        cuerpo = real.to_bytes(4, "grande") + enmascarado
-        escritor.write(bytes([2]) + len(cuerpo).to_bytes(4, "grande") + cuerpo)
-    async def servir(self):
+        real = len(data)
+        masked = mask(data, sess, mode, seq, 1) if data else b""
+        body = real.to_bytes(4, "big") + masked
+        writer.write(bytes([2]) + len(body).to_bytes(4, "big") + body)
+    async def serve(self):
         srv = await asyncio.start_server(self.handle, self.host, self.port, backlog=512)
-        Asíncrono con srv: await srv.serve_forever()
+        async with srv: await srv.serve_forever()
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="0.0.0.0")
@@ -363,23 +361,24 @@ def main():
     ap.add_argument("--backend-port", type=int, default=22)
     a = ap.parse_args()
     asyncio.run(Server(a.host, a.port, (a.backend_host, a.backend_port)).serve())
+
 if __name__ == "__main__": main()
 PYEOF
   chmod +x "$SERVER_PY"
 
-  PYBIN="$(comando -v python3)"
-  gato > "$UNIDAD" <<EOF
-[Unidad]
-Descripción=Servidor BHTTP (puerto $PUERTO)
-Después=red.objetivo
+  PYBIN="$(command -v python3)"
+  cat > "$UNIT" <<EOF
+[Unit]
+Description=BHTTP Server (Port $PUERTO)
+After=network.target
 
-[Servicio]
-Tipo=simple
+[Service]
+Type=simple
 ExecStart=$PYBIN $SERVER_PY --host 0.0.0.0 --port $PUERTO --backend-host 127.0.0.1 --backend-port $SSHPORT
-Reiniciar=en caso de fallo
-ReiniciarSec=3
+Restart=on-failure
+RestartSec=3
 
-[Instalar]
+[Install]
 WantedBy=multi-user.target
 EOF
 
@@ -392,8 +391,8 @@ EOF
   if systemctl is-active --quiet "$SERVICE"; then
     ok "¡Servidor BHTTP configurado y operando en el puerto $PUERTO!"
     guardar_config
-  demás
-    falla "El servicio BHTTP no logró inicializarse."
+  else
+    fail "El servicio BHTTP no logró inicializarse."
   fi
   pausa
 }
@@ -403,90 +402,90 @@ EOF
 # ==============================================================================
 crear_usuario() {
   local u="$1" p="$2" dias="$3"
-  si id "$u" >/dev/null 2>&1; entonces
-    sed -i "/^User: $u /d" "$USERS_FILE" 2>/dev/null
-  demás
+  if id "$u" >/dev/null 2>&1; then
+    sed -i "/^Usuario: $u /d" "$USERS_FILE" 2>/dev/null
+  else
     useradd -M -s /bin/bash "$u" || return 1
   fi
   local pass_hash; pass_hash="$(openssl passwd -6 "$p" 2>/dev/null)"
   usermod -p "$pass_hash" "$u"
-  si [[ "$dias" =~ ^[0-9]+$ ]] && [ "$dias" -gt 0 ]; entonces
-    cambio -E "$(fecha -d "+${dias} días" +%Y-%m-%d 2>/dev/null || fecha -v +${dias}d +%Y-%m-%d 2>/dev/null)" "$u" 2>/dev/null
+  if [[ "$dias" =~ ^[0-9]+$ ]] && [ "$dias" -gt 0 ]; then
+    chage -E "$(date -d "+${dias} days" +%Y-%m-%d 2>/dev/null || date -v +${dias}d +%Y-%m-%d 2>/dev/null)" "$u" 2>/dev/null
     DIAS_FINAL="${dias} días"
-  demás
-    cambio -E -1 "$u" 2>/dev/null; DIAS_FINAL="Ilimitado"
+  else
+    chage -E -1 "$u" 2>/dev/null; DIAS_FINAL="Ilimitado"
   fi
   echo "Usuario: $u | Contraseña: $p | Dias: $DIAS_FINAL" >> "$USERS_FILE"
 }
 
-menú_usuarios() {
-  mientras sea cierto; hacer
-    título
-    sección "GESTIÓN DE USUARIOS Y CREDENCIALES"
-    echo -e " ${NEON_GREEN}[1]${RESET} Crear usuario rápido"
-    echo -e " ${NEON_GREEN}[2]${RESET} Listar credenciales"
-    echo -e " ${NEON_GREEN}[3]${RESET} Eliminar usuario"
+menu_usuarios() {
+  while true; do
+    titulo
+    seccion "GESTIÓN DE USUARIOS Y CREDENCIALES"
+    echo -e " ${NEON_VERDE}[1]${RESET} Crear usuario rápido"
+    echo -e " ${NEON_VERDE}[2]${RESET} Listar credenciales"
+    echo -e " ${NEON_VERDE}[3]${RESET} Eliminar usuario"
     echo -e " ${RED}[0]${RESET} Regresar"
-    línea
+    linea
     echo -ne " ${NEON_ORANGE}◆${RESET} Opción: "
-    leer -r op
-    caso $op en
+    read -r op
+    case $op in
       1)
-        echo -ne " Usuario: "; leer -r nu
-        echo -ne "Contraseña:"; leer -r np
-        echo -ne " Días de vigencia: "; leer -r nd
+        echo -ne " Usuario: "; read -r nu
+        echo -ne " Contraseña: "; read -r np
+        echo -ne " Días de vigencia: "; read -r nd
         if [ ${#np} -lt 4 ]; then fail "Mínimo 4 caracteres"; else
           crear_usuario "$nu" "$np" "$nd" && ok "¡Usuario creado!"
         fi
         pausa
         ;;
       2)
-        sección "LISTA DE USUARIOS"
+        seccion "LISTA DE USUARIOS"
         [ -f "$USERS_FILE" ] && cat "$USERS_FILE" || info "Sin usuarios"
         pausa
         ;;
       3)
-        echo -ne " Usuario a eliminar: "; leer -r nu
-        userdel -r "$nu" 2>/dev/null && sed -i "/^User: $nu /d" "$USERS_FILE" 2>/dev/null && ok "Eliminado"
+        echo -ne " Usuario a eliminar: "; read -r nu
+        userdel -r "$nu" 2>/dev/null && sed -i "/^Usuario: $nu /d" "$USERS_FILE" 2>/dev/null && ok "Eliminado"
         pausa
         ;;
-      0) regresar ;;
+      0) break ;;
     esac
-  hecho
+  done
 }
 
 # ==============================================================================
 # ACTIVADOR Y APERTURA MANUAL DE PUERTOS
 # ==============================================================================
-menú_activar_puertos() {
-  mientras sea cierto; hacer
-    título
-    sección "ACTIVADOR Y APERTURA MANUAL DE PUERTOS (FIREWALL)"
+menu_activar_puertos() {
+  while true; do
+    titulo
+    seccion "ACTIVADOR Y APERTURA MANUAL DE PUERTOS (FIREWALL)"
     echo -e " ${WHITE}Abre cualquier puerto TCP adicional (ej. 443, 80, 8989, 8880, etc.)${RESET}"
-    línea
+    linea
     echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el número de puerto a abrir (Ej. 443): "
-    leer -r p_ingresado
+    read -r p_ingresado
 
-    if [[ "$p_ingresado" =~ ^[0-9]+$ ]] && [ "$p_ingresado" -gt 0 ] && [ "$p_ingresado" -le 65535 ]; entonces
+    if [[ "$p_ingresado" =~ ^[0-9]+$ ]] && [ "$p_ingresado" -gt 0 ] && [ "$p_ingresado" -le 65535 ]; then
       abrir_puerto_sistema "$p_ingresado"
       ok "¡El puerto $p_ingresado ya está abierto y aceptando tráfico!"
-    demás
-      fallar "Número de puerto inválido."
+    else
+      fail "Número de puerto inválido."
     fi
     
-    eco
+    echo
     echo -ne " ${SKY}◆${RESET} ¿Quieres abrir otro puerto? (s/n): "
-    leer -r otro
+    read -r otro
     [[ "$otro" =~ ^[sS]$ ]] || break
-  hecho
+  done
 }
 
 # ==============================================================================
-#ACTUALIZADOR AUTOMÁTICO DESDE GITHUB
+# ACTUALIZADOR AUTOMÁTICO DESDE GITHUB
 # ==============================================================================
 actualizar_script() {
-    título
-    sección "ACTUALIZADOR AUTOMÁTICO DEL SCRIPT"
+    titulo
+    seccion "ACTUALIZADOR AUTOMÁTICO DEL SCRIPT"
     info "Conectando con GitHub para buscar cambios..."
     
     local URL_GITHUB="https://raw.githubusercontent.com/21062022/intalar.sh/main/intalar.sh"
@@ -499,3 +498,48 @@ actualizar_script() {
             configurar_atajo_adm
             ok "¡Script actualizado a la versión más reciente con éxito!"
             info "Reiniciando el panel automáticamente..."
+            pausa
+            exec bash "$SCRIPT_PATH"
+        else
+            fail "El archivo descargado de GitHub no parece ser un script Bash válido."
+        fi
+    else
+        fail "No se pudo conectar a GitHub para realizar la actualización."
+    fi
+    pausa
+}
+
+# ==============================================================================
+# MENÚ PRINCIPAL
+# ==============================================================================
+menu_principal() {
+  check_root
+  cargar_config
+  configurar_atajo_adm
+
+  while true; do
+    titulo
+    echo -e " ${NEON_VERDE}[1]${RESET} Instalar / Reinstalar o Cambiar Puerto BHTTP"
+    echo -e " ${NEON_VERDE}[2]${RESET} Gestión de Usuarios y Credenciales"
+    echo -e " ${NEON_VERDE}[3]${RESET} Activar / Abrir Puerto Personalizado en Firewall"
+    echo -e " ${NEON_VERDE}[4]${RESET} Actualizar Script desde GitHub"
+    echo -e " ${RED}[0]${RESET} Salir del Panel"
+    linea
+    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción [1-4, 0]: "
+    read -r opcion
+
+    case $opcion in
+      1) instalar_servidor ;;
+      2) menu_usuarios ;;
+      3) menu_activar_puertos ;;
+      4) actualizar_script ;;
+      0) clear_screen; ok "¡Gracias por utilizar Hazael Moreno Multi Script!"; exit 0 ;;
+      *) fail "Opción inválida."; sleep 1 ;;
+    esac
+  done
+}
+
+menu_principal
+EOF
+chmod +x /usr/local/bin/intalar.sh
+/usr/local/bin/intalar.sh
