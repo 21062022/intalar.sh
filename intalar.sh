@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v7.4 (BBR Avanzado & Control Real)
+#        PREMIUM SERVER EDITION v7.5 (BBR Avanzado & Control Real)
 # ==============================================================================
 
 set -o pipefail
@@ -136,7 +136,7 @@ titulo() {
     ip_maquina=$(obtener_ip_publica)
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.4${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.5${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
     echo
