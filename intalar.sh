@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v7.2 (Todo OFF por defecto & Sin Borrar Nada)
+#        PREMIUM SERVER EDITION v7.3 (Con BBR Avanzado & Control Real)
 # ==============================================================================
 
 set -o pipefail
@@ -51,6 +51,7 @@ BADVPN_PORT=7300
 BADVPN_STATUS="OFF"
 AUTOSTART_STATUS="OFF"
 CRON_STATUS="OFF"
+BBR_STATUS="OFF"
 
 # ==============================================================================
 # CONFIGURACIÓN BLINDADA DE COMANDOS RÁPIDOS ("adm" / "admin")
@@ -135,7 +136,7 @@ titulo() {
     ip_maquina=$(obtener_ip_publica)
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.2${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.3${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
     echo
@@ -175,6 +176,7 @@ cargar_config() {
   [ -z "${BADVPN_STATUS:-}" ] && BADVPN_STATUS="OFF"
   [ -z "${AUTOSTART_STATUS:-}" ] && AUTOSTART_STATUS="OFF"
   [ -z "${CRON_STATUS:-}" ] && CRON_STATUS="OFF"
+  [ -z "${BBR_STATUS:-}" ] && BBR_STATUS="OFF"
 }
 
 guardar_config() {
@@ -186,15 +188,26 @@ BADVPN_PORT=${BADVPN_PORT}
 BADVPN_STATUS=${BADVPN_STATUS}
 AUTOSTART_STATUS=${AUTOSTART_STATUS}
 CRON_STATUS=${CRON_STATUS}
+BBR_STATUS=${BBR_STATUS}
 EOF
 }
 
 # ==============================================================================
-# INSTALACIÓN DE BADVPN Y BHTTP (TODO 100% EN OFF POR DEFECTO)
+# INSTALACIÓN Y CONFIGURACIÓN DE BADVPN (FUNCIONAMIENTO GARANTIZADO)
 # ==============================================================================
 instalar_badvpn() {
     apt-get update -y >/dev/null 2>&1
     apt-get install -y cmake g++ make wget curl badvpn iptables-persistent 2>/dev/null || true
+
+    # Localizar ruta real del binario de badvpn-udpgw
+    local bin_badvpn=""
+    if [ -f /usr/bin/badvpn-udpgw ]; then
+        bin_badvpn="/usr/bin/badvpn-udpgw"
+    elif [ -f /usr/local/bin/badvpn-udpgw ]; then
+        bin_badvpn="/usr/local/bin/badvpn-udpgw"
+    else
+        bin_badvpn="$(which badvpn-udpgw 2>/dev/null || echo "/usr/bin/badvpn-udpgw")"
+    fi
 
     cat > "$BADVPN_UNIT" <<EOF
 [Unit]
@@ -204,7 +217,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:$BADVPN_PORT --max-clients 500 --max-connections 1000
+ExecStart=$bin_badvpn --listen-addr 127.0.0.1:$BADVPN_PORT --max-clients 500 --max-connections 1000
 Restart=always
 RestartSec=3
 
@@ -213,10 +226,11 @@ WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload
-    systemctl disable "$BADVPN_SERVICE" >/dev/null 2>&1
-    systemctl stop "$BADVPN_SERVICE" >/dev/null 2>&1
 }
 
+# ==============================================================================
+# INSTALACIÓN DE BHTTP SERVER
+# ==============================================================================
 instalar_servidor() {
   titulo
   seccion "INSTALACIÓN Y CONFIGURACIÓN DE PUERTO BHTTP"
@@ -392,12 +406,10 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  systemctl disable "$SERVICE" >/dev/null 2>&1
-  systemctl stop "$SERVICE" >/dev/null 2>&1
   instalar_badvpn
   configurar_atajo_adm
 
-  ok "¡Servidor BHTTP configurado! (El servicio y puerto se mantienen en OFF hasta que los enciendas)."
+  ok "¡Servidor BHTTP configurado!"
   guardar_config
   pausa
 }
@@ -616,13 +628,17 @@ menu_activar_puertos() {
 }
 
 # ==============================================================================
-# BADVPN GATEWAY Y ESTABILIDAD UDP (LLAMADAS Y JUEGOS) - APARTADO [5]
+# BADVPN GATEWAY Y ESTABILIDAD UDP (LLAMADAS Y JUEGOS) - OPCIÓN [5]
 # ==============================================================================
 menu_optimizar_vps() {
   while true; do
     titulo
+    local bv_estado_actual
+    bv_estado_actual=$(systemctl is-active "$BADVPN_SERVICE" 2>/dev/null || echo "inactivo")
+    [ "$bv_estado_actual" = "active" ] && bv_txt="${NEON_GREEN}ACTIVO (Puerto $BADVPN_PORT)${RESET}" || bv_txt="${RED}INACTIVO (OFF)${RESET}"
+
     seccion "CONFIGURACIÓN DE BADVPN GATEWAY (UDP PARA JUEGOS Y VOIP)"
-    echo -e "  ${WHITE}Estado Actual BadVPN:${RESET} [ ${NEON_ORANGE}$BADVPN_STATUS${RESET} ] (Puerto: $BADVPN_PORT)"
+    echo -e "  ${WHITE}Estado Actual BadVPN:${RESET} [ $bv_txt ]"
     echo -e "  ${GRAY}BadVPN mejora la latencia y asegura estabilidad UDP para llamadas y juegos.${RESET}"
     linea
     echo -e "  ${NEON_GREEN}[1]${RESET} Activar / Encender BadVPN en el Puerto ${YELLOW}7300${RESET}"
@@ -669,6 +685,92 @@ menu_optimizar_vps() {
 }
 
 # ==============================================================================
+# BHTTP BBR - ACELERACIÓN TCP EXTREMA (OPCIÓN 10)
+# ==============================================================================
+menu_bhttp_bbr() {
+  while true; do
+    titulo
+    seccion "BHTTP BBR • ACELERACIÓN DE TRANSPORTE TCP MÁXIMA"
+    echo -e "  ${WHITE}Estado Actual BBR:${RESET} [ ${NEON_ORANGE}$BBR_STATUS${RESET ]"
+    echo -e "  ${GRAY}Optimiza los búferes del kernel y el algoritmo de congestión TCP.${RESET}"
+    linea
+    echo -e "  ${NEON_GREEN}[1]${RESET} Fuerza Bruta (Máxima velocidad y búferes ilimitados)"
+    echo -e "  ${NEON_GREEN}[2]${RESET} Estabilidad + Velocidad (Equilibrio perfecto BBR + FQ)"
+    echo -e "  ${NEON_GREEN}[3]${RESET} Apagar BHTTP BBR (Restaurar valores por defecto)"
+    echo -e "  ${RED}[0]${RESET} Regresar al Menú Principal"
+    linea
+    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción: "
+    read -r bbr_op
+    case $bbr_op in
+      1)
+        info "Aplicando perfil de Fuerza Bruta TCP en el Kernel..."
+        sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1
+        sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1
+        sysctl -w net.core.rmem_max=67108864 >/dev/null 2>&1
+        sysctl -w net.core.wmem_max=67108864 >/dev/null 2>&1
+        sysctl -w net.ipv4.tcp_rmem="4096 87380 33554432" >/dev/null 2>&1
+        sysctl -w net.ipv4.tcp_wmem="4096 65536 33554432" >/dev/null 2>&1
+        sysctl -w net.ipv4.tcp_window_scaling=1 >/dev/null 2>&1
+        sysctl -w net.ipv4.tcp_fastopen=3 >/dev/null 2>&1
+        
+        cat >> /etc/sysctl.conf << 'EOF'
+# BHTTP BBR Fuerza Bruta Config
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr
+net.core.rmem_max=67108864
+net.core.wmem_max=67108864
+net.ipv4.tcp_rmem=4096 87380 33554432
+net.ipv4.tcp_wmem=4096 65536 33554432
+net.ipv4.tcp_window_scaling=1
+net.ipv4.tcp_fastopen=3
+EOF
+        sysctl -p >/dev/null 2>&1
+        BBR_STATUS="FUERZA BRUTA (ON)"
+        guardar_config
+        ok "¡Aceleración de Fuerza Bruta aplicada! Tu VPS volará al máximo."
+        pausa
+        ;;
+      2)
+        info "Aplicando perfil Estabilidad + Velocidad (BBR Optimizado)..."
+        sysctl -w net.core.default_qdisc=fq_codel >/dev/null 2>&1
+        sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1
+        sysctl -w net.core.rmem_max=33554432 >/dev/null 2>&1
+        sysctl -w net.core.wmem_max=33554432 >/dev/null 2>&1
+        sysctl -w net.ipv4.tcp_fastopen=3 >/dev/null 2>&1
+
+        cat >> /etc/sysctl.conf << 'EOF'
+# BHTTP BBR Estabilidad y Velocidad Config
+net.core.default_qdisc=fq_codel
+net.ipv4.tcp_congestion_control=bbr
+net.core.rmem_max=33554432
+net.core.wmem_max=33554432
+net.ipv4.tcp_fastopen=3
+EOF
+        sysctl -p >/dev/null 2>&1
+        BBR_STATUS="ESTABILIDAD+VELOCIDAD (ON)"
+        guardar_config
+        ok "¡Perfil de Estabilidad y Velocidad aplicado con éxito!"
+        pausa
+        ;;
+      3)
+        info "Apagando BBR y restaurando valores estándar..."
+        sed -i '/BHTTP BBR/d' /etc/sysctl.conf 2>/dev/null
+        sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf 2>/dev/null
+        sed -i '/net.core.default_qdisc/d' /etc/sysctl.conf 2>/dev/null
+        sysctl -w net.ipv4.tcp_congestion_control=cubic >/dev/null 2>&1
+        sysctl -w net.core.default_qdisc=pfifo_fast >/dev/null 2>&1
+        sysctl -p >/dev/null 2>&1
+        BBR_STATUS="OFF"
+        guardar_config
+        ok "¡BHTTP BBR apagado y sistema restaurado a los valores predeterminados!"
+        pausa
+        ;;
+      0) return ;;
+    esac
+  done
+}
+
+# ==============================================================================
 # AUTO INICIAR SCRIPT EN TERMINAL - OPCIÓN [8]
 # ==============================================================================
 menu_autostart() {
@@ -677,7 +779,6 @@ menu_autostart() {
     seccion "AUTO INICIAR SCRIPT AL ABRIR TERMINAL"
     echo -e "  ${WHITE}Estado actual Auto-Iniciar:${RESET} [ ${NEON_ORANGE}$AUTOSTART_STATUS${RESET} ]"
     echo -e "  ${GRAY}Si está en ON, al entrar por SSH entrará directo al panel.${RESET}"
-    echo -e "  ${GRAY}Si está en OFF, ingresarás normal y solo abrirás con 'adm'.${RESET}"
     linea
     echo -e "  ${NEON_GREEN}[1]${RESET} Encender (ON)"
     echo -e "  ${NEON_GREEN}[2]${RESET} Apagar (OFF)"
@@ -727,7 +828,6 @@ menu_optimizacion_automatica() {
     titulo
     seccion "OPTIMIZACIÓN AUTOMÁTICA CADA 6 HORAS (RAM Y CPU)"
     echo -e "  ${WHITE}Estado actual Optimización Automática:${RESET} [ ${NEON_ORANGE}$CRON_STATUS${RESET} ]"
-    echo -e "  ${GRAY}Libera memoria RAM, búferes de caché y previene saturaciones del sistema.${RESET}"
     linea
     echo -e "  ${NEON_GREEN}[1]${RESET} Activar optimización automática cada 6 horas (ON)"
     echo -e "  ${NEON_GREEN}[2]${RESET} Desactivar optimización automática (OFF)"
@@ -819,6 +919,7 @@ menu_principal() {
     echo -e "  ${NEON_GREEN}[7]${RESET} (Extra) Liberar Memoria RAM Manual"
     echo -e "  ${NEON_GREEN}[8]${RESET} Auto Iniciar Script al Abrir Terminal"
     echo -e "  ${NEON_GREEN}[9]${RESET} Optimización Automática Cada 6 Horas (RAM y CPU)"
+    echo -e "  ${NEON_GREEN}[10]${RESET} BHTTP BBR (Aceleración de Velocidad TCP Extrema)"
     echo -e "  ${RED}[0]${RESET} Salir del Script"
     linea
     echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción: "
@@ -851,6 +952,7 @@ menu_principal() {
         ;;
       8) menu_autostart ;;
       9) menu_optimizacion_automatica ;;
+      10) menu_bhttp_bbr ;;
       0) clear_screen; exit 0 ;;
       *) fail "Opción inválida."; pausa ;;
     esac
