@@ -131,7 +131,6 @@ titulo() {
     echo -e "      ${NEON_ORANGE}🚀 TIGO Y CLARO NICARAGUA • TUNELIZACIÓN MÁXIMA PRO 🚀${RESET}"
     echo
 
-    # Estado del servidor en vivo
     if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
         STATUS_STR="${NEON_GREEN}${BOLD}ACTIVO 🟢${RESET}"
     else
@@ -496,4 +495,6 @@ menu_usuarios() {
     echo -e " ${NEON_GREEN}[3]${RESET} Eliminar usuario"
     echo -e " ${ROJO}[0]${RESET} Regresar al Menú Principal"
     linea
-    echo -ne " ${NEON_ORANGE}◆${RESE
+    echo -ne " ${NEON_ORANGE}◆${RESET} Opción: "
+    read -r op
+    ca
