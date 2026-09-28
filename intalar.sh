@@ -606,7 +606,7 @@ menu_activar_puertos() {
       ok "¡El puerto $p_ingresado ya está abierto y aceptando tráfico!"
     else
       fail "Número de puerto inválido."
-    end
+    fi
     
     echo
     echo -ne " ${SKY}◆${RESET} ¿Deseas abrir otro puerto? (s/n): "
@@ -740,7 +740,6 @@ menu_optimizacion_automatica() {
       1)
         CRON_STATUS="ON"
         guardar_config
-        # Agregar tarea cron que corre cada 6 horas
         local cron_cmd="0 */6 * * * sync && echo 3 > /proc/sys/vm/drop_caches >/dev/null 2>&1"
         (crontab -l 2>/dev/null | grep -v "drop_caches"; echo "$cron_cmd") | crontab -
         ok "¡Optimización automática cada 6 horas activada con éxito!"
