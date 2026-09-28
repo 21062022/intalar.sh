@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v7.9 (Sincronización ON/OFF & UI Limpia)
+#        PREMIUM SERVER EDITION v8.0 (Con Opción de Destrucción Total [11])
 # ==============================================================================
 
 set -o pipefail
@@ -138,7 +138,7 @@ titulo() {
     ip_maquina=$(obtener_ip_publica)
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v7.9${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v8.0${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
     echo
@@ -901,6 +901,54 @@ actualizar_script() {
 }
 
 # ==============================================================================
+# DESTRUCCIÓN TOTAL / DESINSTALACIÓN COMPLETA - OPCIÓN [11]
+# ==============================================================================
+destruir_script_total() {
+    titulo
+    echo -e "${RED}╔══════════════════════════════════════════════════════════════════╗${RESET}"
+    echo -e "${RED}║${RESET} ${WHITE}${BOLD}             ADVERTENCIA: DESTRUCCIÓN TOTAL DEL SISTEMA           ${RESET}${RED}║${RESET}"
+    echo -e "${RED}╚══════════════════════════════════════════════════════════════════╝${RESET}"
+    echo
+    echo -e "  ${WHITE}Esta opción eliminará por completo BHTTP, BadVPN, configuraciones,${RESET}"
+    echo -e "  ${WHITE}archivos de usuario, comandos rápidos y servicios del sistema.${RESET}"
+    echo
+    echo -ne " ${RED}◆${RESET} ¿Estás seguro de que deseas desinstalar y borrar todo? (s/n): "
+    read -r confirmacion
+    
+    if [[ "$confirmacion" =~ ^[sS]$ ]]; then
+        info "Deteniendo servicios activos..."
+        systemctl stop "$SERVICE" 2>/dev/null || true
+        systemctl disable "$SERVICE" 2>/dev/null || true
+        systemctl stop "$BADVPN_SERVICE" 2>/dev/null || true
+        systemctl disable "$BADVPN_SERVICE" 2>/dev/null || true
+
+        info "Eliminando archivos de servicio y binarios..."
+        rm -f "$UNIT" "$BADVPN_UNIT" 2>/dev/null
+        systemctl daemon-reload
+        systemctl reset-failed 2>/dev/null || true
+
+        rm -rf "$DESTDIR" "$CONFIG_DIR" 2>/dev/null
+        rm -f "$ADM_BIN" "$ADMIN_BIN" "$SCRIPT_PATH" 2>/dev/null
+
+        info "Limpiando accesos directos en terminal..."
+        for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
+          if [ -f "$rc" ] || [ "$rc" = "/root/.bashrc" ]; then
+            sed -i '/intalar\.sh/d' "$rc" 2>/dev/null
+            sed -i '/alias adm=/d' "$rc" 2>/dev/null
+            sed -i '/alias admin=/d' "$rc" 2>/dev/null
+          fi
+        done
+
+        ok "¡Desinstalación y destrucción total completada con éxito!"
+        echo -e "${GRAY} El script se cerrará permanentemente.${RESET}"
+        exit 0
+    else
+        info "Operación de destrucción cancelada. Regresando al menú..."
+        pausa
+    fi
+}
+
+# ==============================================================================
 # MENÚ PRINCIPAL
 # ==============================================================================
 menu_principal() {
@@ -939,6 +987,7 @@ menu_principal() {
     echo -e "  ${NEON_GREEN}[8]${RESET} Auto Iniciar Script al Abrir Terminal"
     echo -e "  ${NEON_GREEN}[9]${RESET} Optimización Automática Cada 6 Horas (RAM y CPU)"
     echo -e "  ${NEON_GREEN}[10]${RESET} BHTTP BBR (Aceleración de Velocidad TCP Extrema)"
+    echo -e "  ${RED}[11]${RESET} Destrucción Total / Desinstalar Script Completo"
     echo -e "  ${RED}[0]${RESET} Salir del Script"
     linea
     echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción: "
@@ -972,6 +1021,7 @@ menu_principal() {
       8) menu_autostart ;;
       9) menu_optimizacion_automatica ;;
       10) menu_bhttp_bbr ;;
+      11) destruir_script_total ;;
       0) clear_screen; exit 0 ;;
       *) fail "Opción inválida."; pausa ;;
     esac
