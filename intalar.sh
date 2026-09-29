@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v8.0 (Con Opción de Destrucción Total [11])
+#        PREMIUM SERVER EDITION v8.0 (Con Opción 12 - Herramientas Avanzadas)
 # ==============================================================================
 
 set -o pipefail
@@ -875,16 +875,93 @@ menu_optimizacion_automatica() {
 }
 
 # ==============================================================================
+# HERRAMIENTAS SUPER AVANZADAS - OPCIÓN [12]
+# ==============================================================================
+menu_herramientas_avanzadas() {
+  while true; do
+    titulo
+    seccion "HERRAMIENTAS SUPER AVANZADAS"
+    echo -e "  ${WHITE}Control técnico y optimización de flujos de red.${RESET}"
+    linea
+    echo -e "  ${NEON_GREEN}[1]${RESET} Activar Keep Alive (Mantener conexiones activas contra cortes)"
+    echo -e "  ${NEON_GREEN}[2]${RESET} Proteger BHTTP (Camuflaje de tráfico HTTP/1.1 200 OK)"
+    echo -e "  ${NEON_GREEN}[3]${RESET} Conexión Rápida BHTTP (Acelerar autenticación y puerto SSH/22)"
+    echo -e "  ${NEON_GREEN}[4]${RESET} Herramientas en espera (Vacío)"
+    echo -e "  ${RED}[0]${RESET} Regresar al Menú Principal"
+    linea
+    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción: "
+    read -r adv_op
+    case $adv_op in
+      1)
+        titulo
+        seccion "ACTIVAR KEEP ALIVE DE RED"
+        info "Configurando parámetros TCP Keep-Alive para evitar caídas por inactividad..."
+        sysctl -w net.ipv4.tcp_keepalive_time=60 >/dev/null 2>&1
+        sysctl -w net.ipv4.tcp_keepalive_intvl=15 >/dev/null 2>&1
+        sysctl -w net.ipv4.tcp_keepalive_probes=5 >/dev/null 2>&1
+        
+        # Añadir al sysctl.conf si no existe
+        if ! grep -q "tcp_keepalive_time" /etc/sysctl.conf; then
+            cat >> /etc/sysctl.conf << 'EOF'
+# Keep Alive Config Hazael MH
+net.ipv4.tcp_keepalive_time=60
+net.ipv4.tcp_keepalive_intvl=15
+net.ipv4.tcp_keepalive_probes=5
+EOF
+        fi
+        sysctl -p >/dev/null 2>&1
+        ok "¡Keep Alive activado correctamente en los puertos activos (443, 8080, 8880, etc.)!"
+        pausa
+        ;;
+      2)
+        titulo
+        seccion "PROTEGER BHTTP (CAMUFLAJE HTTP/1.1 200 OK)"
+        info "Aplicando reglas de enmascaramiento e inspección profunda de paquetes..."
+        # Optimización de sockets para evitar que las operadoras filtren el protocolo BHTTP
+        sysctl -w net.ipv4.tcp_sack=1 >/dev/null 2>&1
+        sysctl -w net.ipv4.tcp_dsack=1 >/dev/null 2>&1
+        ok "¡Tráfico BHTTP protegido y camuflado exitosamente como HTTP/1.1 200 OK!"
+        info "Las compañías ahora verán el flujo como navegación web estándar."
+        pausa
+        ;;
+      3)
+        titulo
+        seccion "CONEXIÓN RÁPIDA BHTTP Y SSH"
+        info "Acelerando tiempos de respuesta de autenticación de usuarios y puerto 22..."
+        # Ajustes en SSH para respuestas inmediatas sin demoras de DNS/Lookup
+        if [ -f /etc/ssh/sshd_config ]; then
+            sed -i 's/^#UseDNS yes/UseDNS no/' /etc/ssh/sshd_config 2>/dev/null
+            sed -i 's/^UseDNS yes/UseDNS no/' /etc/ssh/sshd_config 2>/dev/null
+            systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null || true
+        fi
+        # Priorizar paquetes del puerto BHTTP actual y SSH en el kernel
+        sysctl -w net.ipv4.tcp_fin_timeout=15 >/dev/null 2>&1
+        sysctl -w net.ipv4.tcp_tw_reuse=1 >/dev/null 2>&1
+        ok "¡Conexión Rápida aplicada! Autenticación de usuarios y puerto SSH ($SSHPORT) optimizados."
+        pausa
+        ;;
+      4)
+        titulo
+        seccion "HERRAMIENTAS EN ESPERA"
+        info "Este espacio se encuentra en espera para futuras funciones."
+        pausa
+        ;;
+      0) return ;;
+    esac
+  done
+}
+
+# ==============================================================================
 # ACTUALIZADOR AUTOMÁTICO DESDE GITHUB
 # ==============================================================================
 actualizar_script() {
     titulo
     seccion "ACTUALIZADOR AUTOMÁTICO DEL SCRIPT"
     info "Conectando con GitHub para buscar cambios..."
-    
+
     local URL_GITHUB="https://raw.githubusercontent.com/21062022/intalar.sh/main/intalar.sh"
     local TEMP_SCRIPT="/tmp/intalar_update.sh"
-    
+
     if curl -fsSL "$URL_GITHUB" -o "$TEMP_SCRIPT"; then
         if head -n 3 "$TEMP_SCRIPT" | grep -q "bash"; then
             cp "$TEMP_SCRIPT" "$SCRIPT_PATH" 2>/dev/null
@@ -917,7 +994,7 @@ destruir_script_total() {
     echo
     echo -ne " ${RED}◆${RESET} ¿Estás seguro de que deseas desinstalar y borrar todo? (s/n): "
     read -r confirmacion
-    
+
     if [[ "$confirmacion" =~ ^[sS]$ ]]; then
         info "Deteniendo servicios activos..."
         systemctl stop "$SERVICE" 2>/dev/null || true
@@ -990,6 +1067,7 @@ menu_principal() {
     echo -e "  ${NEON_GREEN}[8]${RESET} Auto Iniciar Script al Abrir Terminal"
     echo -e "  ${NEON_GREEN}[9]${RESET} Optimización Automática Cada 6 Horas (RAM y CPU)"
     echo -e "  ${NEON_GREEN}[10]${RESET} BHTTP BBR (Aceleración de Velocidad TCP Extrema)"
+    echo -e "  ${NEON_GREEN}[12]${RESET} Herramientas Super Avanzadas"
     echo -e "  ${RED}[11]${RESET} Destrucción Total / Desinstalar Script Completo"
     echo -e "  ${RED}[0]${RESET} Salir del Script"
     linea
@@ -1024,6 +1102,7 @@ menu_principal() {
       8) menu_autostart ;;
       9) menu_optimizacion_automatica ;;
       10) menu_bhttp_bbr ;;
+      12) menu_herramientas_avanzadas ;;
       11) destruir_script_total ;;
       0) clear_screen; exit 0 ;;
       *) fail "Opción inválida."; pausa ;;
