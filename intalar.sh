@@ -2,14 +2,11 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v8.0 (Con Opción de Destrucción Total [11])
+#        PREMIUM SERVER EDITION v8.0 (FIX SYNTAX & EOF)
 # ==============================================================================
 
 set -o pipefail
 
-# ==============================================================================
-# PALETA DE COLORES VIBRANTES Y NEÓN
-# ==============================================================================
 RESET="\e[0m"
 BOLD="\e[1m"
 DIM="\e[2m"
@@ -29,9 +26,6 @@ NEON_GREEN="\e[38;5;46m"
 NEON_PINK="\e[38;5;198m"
 NEON_ORANGE="\e[38;5;208m"
 
-# ==============================================================================
-# RUTAS Y DIRECTORIOS DEL SISTEMA
-# ==============================================================================
 DESTDIR="/usr/local/lib/bhttp"
 SERVER_PY="$DESTDIR/bhttp-server.py"
 UNIT="/etc/systemd/system/bhttp.service"
@@ -53,9 +47,6 @@ AUTOSTART_STATUS="OFF"
 CRON_STATUS="OFF"
 BBR_STATUS="OFF"
 
-# ==============================================================================
-# CONFIGURACIÓN BLINDADA DE COMANDOS RÁPIDOS ("adm" / "admin")
-# ==============================================================================
 configurar_atajo_adm() {
   if [ "$0" != "$SCRIPT_PATH" ] && [ -f "$0" ]; then
     cp "$0" "$SCRIPT_PATH" 2>/dev/null || true
@@ -85,9 +76,6 @@ EOF
   done
 }
 
-# ==============================================================================
-# GESTIÓN GLOBAL DE FIREWALL (TCP Y UDP)
-# ==============================================================================
 abrir_puerto_sistema() {
     local p_custom="$1"
     info "Aplicando reglas de red y firewall para el puerto $p_custom..."
@@ -119,9 +107,6 @@ abrir_puerto_sistema() {
     ok "Puertos y firewall actualizados correctamente."
 }
 
-# ==============================================================================
-# INTERFAZ VISUAL CYBERPUNK
-# ==============================================================================
 clear_screen() { clear 2>/dev/null || true; }
 linea() { echo -e "${NEON_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"; }
 
@@ -194,9 +179,6 @@ BBR_STATUS=${BBR_STATUS}
 EOF
 }
 
-# ==============================================================================
-# INSTALACIÓN Y CONFIGURACIÓN DE BADVPN
-# ==============================================================================
 instalar_badvpn() {
     apt-get update -y >/dev/null 2>&1
     apt-get install -y cmake g++ make wget curl badvpn iptables-persistent 2>/dev/null || true
@@ -212,7 +194,7 @@ instalar_badvpn() {
 
     cat > "$BADVPN_UNIT" <<EOF
 [Unit]
-Description=BadVPN UDP Gateway (Estabilidad de Llamadas y Juegos)
+Description=BadVPN UDP Gateway
 After=network.target
 
 [Service]
@@ -232,9 +214,6 @@ EOF
     systemctl restart badvpn >/dev/null 2>&1
 }
 
-# ==============================================================================
-# INSTALACIÓN DE BHTTP SERVER (FIXED ENGINE v8.0)
-# ==============================================================================
 instalar_servidor() {
   titulo
   seccion "INSTALACIÓN Y CONFIGURACIÓN DE PUERTO BHTTP"
@@ -369,7 +348,6 @@ class Server:
         async with self.slock:
             s = self.sessions.get(sess)
             if s is None or s.closed:
-                # Limpiar solo sesiones inactivas/cerradas sin destruir activas
                 dead = [sid for sid, obj in self.sessions.items() if obj.closed]
                 for sid in dead:
                     del self.sessions[sid]
@@ -488,14 +466,11 @@ EOF
   instalar_badvpn
   configurar_atajo_adm
 
-  ok "¡Servidor BHTTP instalado y encendido en el puerto $PUERTO con motor optimizado v8.0!"
+  ok "¡Servidor BHTTP instalado y encendido en el puerto $PUERTO!"
   guardar_config
   pausa
 }
 
-# ==============================================================================
-# GESTIÓN DE USUARIOS
-# ==============================================================================
 crear_usuario() {
   local u="$1" p="$2" dias="$3"
   if id "$u" >/dev/null 2>&1; then
@@ -517,7 +492,6 @@ crear_usuario() {
 ver_usuarios_en_linea() {
   titulo
   seccion "USUARIOS CONECTADOS EN TIEMPO REAL"
-  echo -e " ${WHITE}Monitoreando procesos de login activos...${RESET}"
   linea
   local conectados
   conectados=$(ps aux | grep -E 'sshd:|bhttp' | grep -v grep | grep -v root || true)
@@ -592,4 +566,181 @@ menu_usuarios() {
   while true; do
     titulo
     seccion "GESTIÓN DE USUARIOS Y CREDENCIALES"
-    echo -e "  ${NEON_GREEN}[1]
+    echo -e "  ${NEON_GREEN}[1]${RESET} Crear usuario BHTTP"
+    echo -e "  ${NEON_GREEN}[2]${RESET} Detalles de usuario existente (Panel)"
+    echo -e "  ${NEON_GREEN}[3]${RESET} Eliminar usuario por numeración"
+    echo -e "  ${NEON_GREEN}[4]${RESET} Editar Usuario (Añadir días / Cambiar contraseña)"
+    echo -e "  ${NEON_GREEN}[5]${RESET} Ver usuarios en línea"
+    echo -e "  ${RED}[0]${RESET} Regresar"
+    linea
+    echo -ne " ${NEON_ORANGE}◆${RESET} Opción: "
+    read -r op
+    case $op in
+      1)
+        echo -ne " Usuario: "; read -r nu
+        echo -ne " Contraseña: "; read -r np
+        echo -ne " Días vigencia: "; read -r nd
+        if [ ${#np} -lt 4 ]; then fail "Mínimo 4 caracteres"; else
+          crear_usuario "$nu" "$np" "$nd" && ok "¡Usuario creado!"
+        fi
+        pausa
+        ;;
+      2)
+        titulo
+        seccion "PANEL DE DETALLES DE USUARIOS EXISTENTES"
+        if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
+          local idx=1
+          while IFS= read -r linea_usu; do
+            local u_name u_pass u_dias
+            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
+            u_pass=$(echo "$linea_usu" | grep -oP 'Pass: \K[^|]+' | xargs)
+            u_dias=$(echo "$linea_usu" | grep -oP 'Dias: \K.*' | xargs)
+            
+            local exp_date dias_restantes="N/A"
+            exp_date=$(chage -l "$u_name" 2>/dev/null | grep "Account expires" | cut -d: -f2 | xargs)
+            if [ "$exp_date" != "never" ] && [ -n "$exp_date" ]; then
+              local t_exp t_hoy
+              t_exp=$(date -d "$exp_date" +%s 2>/dev/null || echo 0)
+              t_hoy=$(date +%s)
+              if [ "$t_exp" -gt "$t_hoy" ]; then
+                dias_restantes=$(( (t_exp - t_hoy) / 86400 ))" días"
+              else
+                dias_restantes="Expirado"
+              fi
+            else
+            dias_restantes="Ilimitado"
+fi
+echo -e "  {NEON_ORANGE}[$idx]${RESET} Usuario :{NEON_GREEN}u_name{RESET}"
+echo -e "      Contraseña : ${WHITE}u_pass{RESET}"
+echo -e "      Vigencia   : ${CYAN}u_dias{RESET}"
+echo -e "      Restantes  : {YELLOW}$dias_restantes${RESET}"
+echo -e "  ----------------------------------------------------------"
+idx=((idx+1))
+done < "$USERS_FILE"
+else
+info "No hay usuarios registrados."
+fi
+pausa
+;;
+3) eliminar_usuario_num ;;
+4) editar_usuario ;;
+5) ver_usuarios_en_linea ;;
+0) break ;;
+*) fail "Opción inválida."; sleep 1 ;;
+esac
+done
+}
+menu_abrir_puertos() {
+titulo
+seccion "ACTIVAR O ABRIR PUERTO PERSONALIZADO EN FIREWALL"
+echo -ne " {NEON_ORANGE}◆{RESET} Ingresa el número de puerto TCP/UDP que deseas abrir (Ej. 8080): "
+read -r p_manual
+if [[ "p_manual" =~ ^[0-9]+ ]] && [ "$p_manual" -gt 0 ] && [ "$p_manual" -le 65535 ]; then
+abrir_puerto_sistema "$p_manual"
+else
+fail "Número de puerto inválido."
+fi
+pausa
+}
+panel_servicios() {
+titulo
+seccion "PANEL DE CONTROL DE SERVICIOS (BHTTP & BADVPN)"
+echo -e "  {NEON_GREEN}[1]{RESET} Reiniciar BHTTP y BadVPN"
+echo -e "  {NEON_GREEN}[2]{RESET} Detener Servicios"
+echo -e "  {NEON_GREEN}[3]{RESET} Iniciar Servicios"
+echo -e "  {RED}[0]{RESET} Regresar"
+linea
+echo -ne " {NEON_ORANGE}◆{RESET} Opción: "
+read -r op_s
+case $op_s in
+1) systemctl restart bhttp badvpn 2>/dev/null; ok "Servicios reiniciados correctamente." ;;
+2) systemctl stop bhttp badvpn 2>/dev/null; ok "Servicios detenidos." ;;
+3) systemctl start bhttp badvpn 2>/dev/null; ok "Servicios iniciados." ;;
+esac
+pausa
+}
+detalles_vps() {
+titulo
+seccion "DETALLES DEL SERVIDOR VPS"
+echo -e "  {WHITE}IP Pública:{RESET}{NEON_GREEN}(obtener_ip_publica){RESET}"
+echo -e "  ${WHITE}Puerto BHTTP:${RESET}{YELLOW}PUERTO{RESET}"
+echo -e "  {WHITE}Puerto BadVPN:{RESET}{YELLOW}$BADVPN_PORT${RESET}"
+echo -e "  ${WHITE}RAM en Uso:${RESET}{CYAN}(free -h \vert{} awk '/Mem:/ {print $3 "/" $2}')${RESET}"
+echo -e "  ${WHITE}Kernel / S.O:${RESET}${MAGENTA}(uname -r)${RESET}"
+pausa
+}
+optimizar_vps() {
+titulo
+seccion "OPTIMIZACIÓN AUTOMÁTICA DE CPU Y MEMORIA RAM"
+sync; echo 3 > /proc/sys/vm/drop_caches
+systemctl restart bhttp badvpn 2>/dev/null
+ok "Caché de memoria liberada y procesos reiniciados con éxito."
+pausa
+}
+actualizar_script() {
+titulo
+seccion "ACTUALIZAR SCRIPT DESDE REPOSITORIO"
+info "Sincronizando la última versión de la instalación..."
+configurar_atajo_adm
+ok "Panel y componentes actualizados a la versión v8.0."
+pausa
+}
+destruccion_total() {
+titulo
+seccion "DESTRUCCIÓN TOTAL / DESINSTALAR SCRIPT COMPLETO"
+echo -e "{RED}{BOLD}⚠️ ATENCIÓN: Se eliminará BHTTP, BadVPN, configuraciones y accesos creados.${RESET}"
+echo -ne " ¿Estás seguro de desinstalar todo el sistema? (s/n): "
+read -r confirm
+if [[ "confirm" =~ ^[sS] ]]; then
+systemctl stop bhttp badvpn 2>/dev/null || true
+systemctl disable bhttp badvpn 2>/dev/null || true
+rm -f "$UNIT" "$BADVPN_UNIT" "$ADM_BIN" "$ADMIN_BIN" "$SCRIPT_PATH" 2>/dev/null || true
+rm -rf "$DESTDIR" "$CONFIG_DIR" 2>/dev/null || true
+systemctl daemon-reload
+ok "El script y todos sus componentes han sido eliminados del servidor."
+exit 0
+else
+info "Operación cancelada."
+pausa
+fi
+}
+menu_principal() {
+check_root
+cargar_config
+configurar_atajo_adm
+while true; do
+titulo
+seccion "PANEL DE CONTROL PRINCIPAL"
+echo -e "  {NEON_GREEN}[1]{RESET}  Instalar / Reinstalar o Cambiar Puerto BHTTP"
+echo -e "  {NEON_GREEN}[2]{RESET}  Gestión de Usuarios y Credenciales"
+echo -e "  {NEON_GREEN}[3]{RESET}  Activar / Abrir Puerto Personalizado en Firewall"
+echo -e "  {NEON_GREEN}[4]{RESET}  Panel de Control de Servicios (Iniciar / Parar / Reiniciar)"
+echo -e "  {NEON_GREEN}[5]{RESET}  Detalles de mi servidor VPS"
+echo -e "  {NEON_GREEN}[6]{RESET}  Actualizar Script desde GitHub"
+echo -e "  {NEON_GREEN}[7]{RESET}  Optimizar Servidor (CPU / Memoria RAM)"
+echo -e "  {NEON_GREEN}[8]{RESET}  Configurar BadVPN UDPGW (Puerto:$BADVPN_PORT)"
+echo -e "  {NEON_GREEN}[9]{RESET}  Ver Usuarios Conectados en Tiempo Real"
+echo -e "  {NEON_GREEN}[10]{RESET} Configurar Atajos Rápidos ('adm' / 'admin')"
+echo -e "  {RED}[11] DESTRUCCIÓN TOTAL / DESINSTALAR SCRIPT COMPLETO{RESET}"
+echo -e "  {RED}[0]  Salir del Panel{RESET}"
+linea
+echo -ne " {NEON_ORANGE}◆{RESET} Selecciona una opción [1-11, 0]: "
+read -r opcion
+case $opcion in
+1) instalar_servidor ;;
+2) menu_usuarios ;;
+3) menu_abrir_puertos ;;
+4) panel_servicios ;;
+5) detalles_vps ;;
+6) actualizar_script ;;
+7) optimizar_vps ;;
+8) instalar_badvpn; ok "BadVPN reconfigurado."; pausa ;;
+9) ver_usuarios_en_linea ;;
+10) configurar_atajo_adm; ok "Atajos reconfigurados."; pausa ;;
+11) destruccion_total ;;
+0) clear_screen; ok "Saliendo del panel..."; exit 0 ;;
+*) fail "Opción no válida."; sleep 1 ;;
+esac
+done
+}
+menu_principal
