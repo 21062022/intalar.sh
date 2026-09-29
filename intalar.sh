@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v8.2 (Fixed Illegal Packet Size / SSH Banner Sync)
+#        PREMIUM SERVER EDITION v8.5 (Estabilidad Total / Basado en v8.0)
 # ==============================================================================
 
 set -o pipefail
@@ -138,7 +138,7 @@ titulo() {
     ip_maquina=$(obtener_ip_publica)
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v8.2${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v8.5${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
     echo
@@ -230,7 +230,7 @@ EOF
 }
 
 # ==============================================================================
-# INSTALACIÓN DE BHTTP SERVER (Versión Anti-Packet-Size / SSH Stream Clean)
+# INSTALACIÓN DE BHTTP SERVER (Motor v8.0 Original 100% Funcional)
 # ==============================================================================
 instalar_servidor() {
   titulo
@@ -258,7 +258,8 @@ instalar_servidor() {
   mkdir -p "$DESTDIR"
   cat > "$SERVER_PY" << 'PYEOF'
 #!/usr/bin/env python3
-import argparse, asyncio, hashlib, sys
+import argparse, asyncio, hashlib, struct, sys
+
 MAGIC = b"BHP1"
 LONGPOLL = 2.0
 
@@ -283,7 +284,8 @@ class Session:
         self.sess = sess
         self.backend = backend
         self.cond = asyncio.Condition()
-        self.up_queue = asyncio.Queue()
+        self.up_next = 0
+        self.up_pending = {}
         self.down_raw = bytearray()
         self.down_chunks = {}
         self.down_assign = 0
@@ -291,20 +293,15 @@ class Session:
         self.closed = False
         self.br = None
         self.bw = None
-        self.ul_task = None
 
     async def connect(self):
         host, port = self.backend
-        try:
-            self.br, self.bw = await asyncio.open_connection(host, port)
-            asyncio.create_task(self._reader())
-            self.ul_task = asyncio.create_task(self._uploader())
-        except Exception:
-            self.closed = True
+        self.br, self.bw = await asyncio.open_connection(host, port)
+        asyncio.create_task(self._reader())
 
     async def _reader(self):
         try:
-            while not self.closed:
+            while True:
                 data = await self.br.read(65536)
                 if not data:
                     break
@@ -318,26 +315,24 @@ class Session:
                 self.eof = True
                 self.cond.notify_all()
 
-    async def _uploader(self):
-        try:
-            while not self.closed:
-                chunk = await self.up_queue.get()
-                if chunk is None:
-                    break
-                self.bw.write(chunk)
-                await self.bw.drain()
-        except Exception:
-            self.closed = True
-
     async def upload(self, seq, data):
-        if data and not self.closed:
-            await self.up_queue.put(data)
+        async with self.cond:
+            if data:
+                self.up_pending[seq] = data
+            while self.up_next in self.up_pending:
+                chunk = self.up_pending.pop(self.up_next)
+                try:
+                    self.bw.write(chunk)
+                    await self.bw.drain()
+                except Exception:
+                    self.closed = True
+                self.up_next += 1
 
     async def download(self, seq, maxlen, deadline):
         if maxlen <= 0: maxlen = 1399
         loop = asyncio.get_running_loop()
         async with self.cond:
-            while not self.closed:
+            while True:
                 if seq < self.down_assign:
                     return self.down_chunks.get(seq, b"")
                 if seq == self.down_assign:
@@ -362,7 +357,6 @@ class Session:
                     self.down_assign += 1
                 self.cond.notify_all()
                 return b""
-            return b""
 
     async def ack(self, seq):
         async with self.cond:
@@ -373,10 +367,8 @@ class Session:
         async with self.cond:
             self.closed = True
             self.cond.notify_all()
-        await self.up_queue.put(None)
         try:
-            if self.bw:
-                self.bw.close()
+            self.bw.close()
         except Exception:
             pass
 
@@ -410,10 +402,6 @@ class Server:
                 seq = int.from_bytes(hdr[17:25], "big")
                 ln = int.from_bytes(hdr[25:29], "big")
                 
-                # Validación de seguridad contra tamaños corruptos o desincronización de paquetes
-                if ln > 65535 or ln < 0:
-                    break
-
                 payload = b""
                 if ln and mode in (0, 1, 2, 3):
                     raw = await reader.readexactly(ln)
@@ -451,7 +439,7 @@ class Server:
                     writer.write(bytes([0]) + (0).to_bytes(4, "big"))
                     await writer.drain()
                 else:
-                    break
+                    return
         except Exception:
             pass
         finally:
@@ -503,7 +491,7 @@ EOF
 
   systemctl daemon-reload
   systemctl enable "$SERVICE" >/dev/null 2>&1
-  systemctl restart "$SERVICE" >/dev/null 2>&1
+  systemctl start "$SERVICE" >/dev/null 2>&1
   instalar_badvpn
   configurar_atajo_adm
 
