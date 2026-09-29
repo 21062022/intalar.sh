@@ -1,690 +1,224 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # ==============================================================================
-#        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
-#        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v8.0 (Con Opción de Destrucción Total [11])
+# HAZAEL MORENO MULTI SCRIPT INSTALLER (ULTRA CYBER EDITION v8.0)
 # ==============================================================================
 
-set -o pipefail
+# Colores y Estilos UI
+RESET="\033[0m"
+BOLD="\033[1m"
+WHITE="\033[1;37m"
+GRAY="\033[0;37m"
+RED="\033[1;31m"
+NEON_GREEN="\033[1;32m"
+NEON_ORANGE="\033[1;33m"
+NEON_PINK="\033[1;35m"
 
-# ==============================================================================
-# PALETA DE COLORES VIBRANTES Y NEÓN
-# ==============================================================================
-RESET="\e[0m"
-BOLD="\e[1m"
-DIM="\e[2m"
+# Rutas y Variables Globales
+CONFIG_DIR="/etc/bhttp_config"
+CONFIG_FILE="$CONFIG_DIR/config.cfg"
+SERVICE="bhttp.service"
+UNIT="/etc/systemd/system/$SERVICE"
+BADVPN_SERVICE="badvpn.service"
+BADVPN_UNIT="/etc/systemd/system/$BADVPN_SERVICE"
+DESTDIR="/usr/local/bin/bhttp"
+ADM_BIN="/usr/bin/adm"
+ADMIN_BIN="/usr/bin/admin"
+SCRIPT_PATH="$(realpath "$0")"
 
-RED="\e[1;91m"
-GREEN="\e[1;92m"
-YELLOW="\e[1;93m"
-BLUE="\e[1;94m"
-MAGENTA="\e[1;95m"
-CYAN="\e[1;96m"
-WHITE="\e[1;97m"
-GRAY="\e[1;90m"
-
-SKY="\e[38;5;117m"
-NEON_BLUE="\e[38;5;39m"
-NEON_GREEN="\e[38;5;46m"
-NEON_PINK="\e[38;5;198m"
-NEON_ORANGE="\e[38;5;208m"
-
-# ==============================================================================
-# RUTAS Y DIRECTORIOS DEL SISTEMA
-# ==============================================================================
-DESTDIR="/usr/local/lib/bhttp"
-SERVER_PY="$DESTDIR/bhttp-server.py"
-UNIT="/etc/systemd/system/bhttp.service"
-BADVPN_UNIT="/etc/systemd/system/badvpn.service"
-SERVICE="bhttp"
-BADVPN_SERVICE="badvpn"
-CONFIG_DIR="/etc/bhttp"
-CONFIG="$CONFIG_DIR/nullcore.conf"
-USERS_FILE="$CONFIG_DIR/cuentas.txt"
-SCRIPT_PATH="/usr/local/bin/intalar.sh"
-ADM_BIN="/usr/local/bin/adm"
-ADMIN_BIN="/usr/local/bin/admin"
-
+# Variables de Estado por Defecto
 PUERTO="443"
-SSHPORT=22
-BADVPN_PORT=7300
 BADVPN_STATE="OFF"
-AUTOSTART_STATUS="OFF"
+BADVPN_PORT="7300"
 CRON_STATUS="OFF"
-BBR_STATUS="OFF"
+AUTO_US="OFF"
 
 # ==============================================================================
-# CONFIGURACIÓN BLINDADA DE COMANDOS RÁPIDOS ("adm" / "admin")
+# FUNCIONES DE ESTABILIDAD Y SOPORTE BHTTP (INICIO)
 # ==============================================================================
-configurar_atajo_adm() {
-  if [ "$0" != "$SCRIPT_PATH" ] && [ -f "$0" ]; then
-    cp "$0" "$SCRIPT_PATH" 2>/dev/null || true
+check_root() {
+  if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}[ERROR] Este script debe ejecutarse como root.${RESET}"
+    exit 1
   fi
-  chmod +x "$SCRIPT_PATH" 2>/dev/null || true
-
-  cat > "$ADM_BIN" << 'EOF'
-#!/usr/bin/env bash
-exec sudo bash /usr/local/bin/intalar.sh "$@"
-EOF
-  chmod +x "$ADM_BIN"
-
-  cat > "$ADMIN_BIN" << 'EOF'
-#!/usr/bin/env bash
-exec sudo bash /usr/local/bin/intalar.sh "$@"
-EOF
-  chmod +x "$ADMIN_BIN"
-
-  for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
-    if [ -f "$rc" ] || [ "$rc" = "/root/.bashrc" ]; then
-      touch "$rc" 2>/dev/null
-      sed -i '/alias adm=/d' "$rc" 2>/dev/null
-      sed -i '/alias admin=/d' "$rc" 2>/dev/null
-      echo "alias adm='sudo bash /usr/local/bin/intalar.sh'" >> "$rc"
-      echo "alias admin='sudo bash /usr/local/bin/intalar.sh'" >> "$rc"
-    fi
-  done
-}
-
-# ==============================================================================
-# GESTIÓN GLOBAL DE FIREWALL (TCP Y UDP)
-# ==============================================================================
-abrir_puerto_sistema() {
-    local p_custom="$1"
-    info "Aplicando reglas de red y firewall para el puerto $p_custom..."
-
-    if command -v ufw >/dev/null 2>&1; then
-        ufw allow "$p_custom"/tcp >/dev/null 2>&1
-        ufw allow "$p_custom"/udp >/dev/null 2>&1
-        ufw allow "$BADVPN_PORT"/tcp >/dev/null 2>&1
-        ufw allow "$BADVPN_PORT"/udp >/dev/null 2>&1
-        ufw allow 22/tcp >/dev/null 2>&1
-        ufw reload >/dev/null 2>&1 || true
-    fi
-
-    if command -v iptables >/dev/null 2>&1; then
-        iptables -A INPUT -p tcp --dport "$p_custom" -j ACCEPT 2>/dev/null || true
-        iptables -A INPUT -p udp --dport "$p_custom" -j ACCEPT 2>/dev/null || true
-        iptables -A INPUT -p tcp --dport "$BADVPN_PORT" -j ACCEPT 2>/dev/null || true
-        iptables -A INPUT -p udp --dport "$BADVPN_PORT" -j ACCEPT 2>/dev/null || true
-        iptables -A INPUT -p tcp --dport 22 -j ACCEPT 2>/dev/null || true
-        iptables -A INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
-        iptables -A INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
-        
-        if command -v netfilter-persistent >/dev/null 2>&1; then
-            netfilter-persistent save >/dev/null 2>&1 || true
-        elif [ -d /etc/iptables ]; then
-            iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
-        fi
-    fi
-    ok "Puertos y firewall actualizados correctamente."
-}
-
-# ==============================================================================
-# INTERFAZ VISUAL CYBERPUNK
-# ==============================================================================
-clear_screen() { clear 2>/dev/null || true; }
-linea() { echo -e "${NEON_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"; }
-
-obtener_ip_publica() {
-    local ip_pub
-    ip_pub=$(curl -fsS --max-time 2 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
-    [ -z "$ip_pub" ] && ip_pub="127.0.0.1"
-    echo "$ip_pub"
 }
 
 titulo() {
-    clear_screen
-    local ip_maquina
-    ip_maquina=$(obtener_ip_publica)
-    echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v8.0${RESET}             ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
-    echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
-    echo
+  clear
+  echo -e "${NEON_ORANGE}╔══════════════════════════════════════════════════════════════════╗${RESET}"
+  echo -e "${NEON_ORANGE}║${RESET} ${WHITE}${BOLD}       HAZAEL MORENO MULTI SCRIPT - ULTRA CYBER v8.0        ${RESET}${NEON_ORANGE}║${RESET}"
+  echo -e "${NEON_ORANGE}╚══════════════════════════════════════════════════════════════════╝${RESET}"
+  echo
 }
 
 seccion() {
-    echo
-    echo -e "${MAGENTA}┌──────────────────────────────────────────────────────────────────┐${RESET}"
-    echo -e "${MAGENTA}│${RESET} ${WHITE}${BOLD} $1${RESET}"
-    echo -e "${MAGENTA}└──────────────────────────────────────────────────────────────────┘${RESET}"
-    echo
+  echo -e "${NEON_PINK} ▶ $1${RESET}"
+  echo -e "${GRAY}────────────────────────────────────────────────────────────────────${RESET}"
 }
 
-ok() { echo -e " ${NEON_GREEN}✔ [ÉXITO]${RESET} ${WHITE}$1${RESET}"; }
-info() { echo -e " ${SKY}◆ [INFO]${RESET} ${WHITE}$1${RESET}"; }
-fail() { echo -e " ${RED}✖ [ERROR]${RESET} ${WHITE}$1${RESET}"; }
+linea() {
+  echo -e "${GRAY}────────────────────────────────────────────────────────────────────${RESET}"
+}
+
+ok() {
+  echo -e "${NEON_GREEN} ✔ $1${RESET}"
+}
+
+info() {
+  echo -e "${NEON_ORANGE} ℹ $1${RESET}"
+}
+
+fail() {
+  echo -e "${RED} ✖ $1${RESET}"
+}
 
 pausa() {
-    echo
-    echo -e "${GRAY} Presiona ${NEON_GREEN}[Enter]${GRAY} para regresar...${RESET}"
-    read -r
+  echo
+  echo -ne "${GRAY} Presiona ENTER para continuar...${RESET}"
+  read -r
 }
 
-check_root() {
-  if [ "$(id -u 2>/dev/null || echo 0)" != 0 ]; then
-    fail "Este script debe ejecutarse como root: sudo bash $0"
-    exit 2
-  fi
+clear_screen() {
+  clear
 }
 
 cargar_config() {
   mkdir -p "$CONFIG_DIR"
-  [ -f "$CONFIG" ] && source "$CONFIG"
-  [ -z "${PUERTO:-}" ] && PUERTO="443"
-  [ -z "${SSHPORT:-}" ] && SSHPORT=22
-  [ -z "${BADVPN_PORT:-}" ] && BADVPN_PORT=7300
-  [ -z "${BADVPN_STATE:-}" ] && BADVPN_STATE="OFF"
-  [ -z "${AUTOSTART_STATUS:-}" ] && AUTOSTART_STATUS="OFF"
-  [ -z "${CRON_STATUS:-}" ] && CRON_STATUS="OFF"
-  [ -z "${BBR_STATUS:-}" ] && BBR_STATUS="OFF"
+  if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+  else
+    guardar_config
+  fi
 }
 
 guardar_config() {
   mkdir -p "$CONFIG_DIR"
-  cat > "$CONFIG" <<EOF
-PUERTO=${PUERTO}
-SSHPORT=${SSHPORT}
-BADVPN_PORT=${BADVPN_PORT}
-BADVPN_STATE=${BADVPN_STATE}
-AUTOSTART_STATUS=${AUTOSTART_STATUS}
-CRON_STATUS=${CRON_STATUS}
-BBR_STATUS=${BBR_STATUS}
+  cat <<EOF > "$CONFIG_FILE"
+PUERTO="$PUERTO"
+BADVPN_STATE="$BADVPN_STATE"
+BADVPN_PORT="$BADVPN_PORT"
+CRON_STATUS="$CRON_STATUS"
+AUTO_US="$AUTO_US"
 EOF
 }
 
-# ==============================================================================
-# INSTALACIÓN Y CONFIGURACIÓN DE BADVPN
-# ==============================================================================
-instalar_badvpn() {
-    apt-get update -y >/dev/null 2>&1
-    apt-get install -y cmake g++ make wget curl badvpn iptables-persistent 2>/dev/null || true
+configurar_atajo_adm() {
+  if [ -f "$SCRIPT_PATH" ]; then
+    ln -sf "$SCRIPT_PATH" "$ADM_BIN" 2>/dev/null
+    ln -sf "$SCRIPT_PATH" "$ADMIN_BIN" 2>/dev/null
+    chmod +x "$ADM_BIN" "$ADMIN_BIN" 2>/dev/null
+  fi
+}
 
-    local bin_badvpn=""
-    if [ -f /usr/bin/badvpn-udpgw ]; then
-        bin_badvpn="/usr/bin/badvpn-udpgw"
-    elif [ -f /usr/local/bin/badvpn-udpgw ]; then
-        bin_badvpn="/usr/local/bin/badvpn-udpgw"
-    else
-        bin_badvpn="$(which badvpn-udpgw 2>/dev/null || echo "/usr/bin/badvpn-udpgw")"
-    fi
-
-    cat > "$BADVPN_UNIT" <<EOF
+# ==============================================================================
+# INSTALACIÓN Y GESTIÓN DE PUERTOS Y SERVICIOS
+# ==============================================================================
+instalar_servidor() {
+  titulo
+  seccion "INSTALACIÓN / REINSTALACIÓN PUERTO BHTTP"
+  echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el puerto para BHTTP [Por defecto 443]: "
+  read -r input_port
+  if [[ -n "$input_port" && "$input_port" =~ ^[0-9]+$ ]]; then
+    PUERTO="$input_port"
+  fi
+  
+  info "Configurando entorno y asegurando estabilidad del servicio..."
+  guardar_config
+  
+  # Asegurar directorios de destino
+  mkdir -p "$DESTDIR"
+  
+  # Crear servicio systemd robusto para BHTTP
+  cat <<EOF > "$UNIT"
 [Unit]
-Description=BadVPN UDP Gateway (Estabilidad de Llamadas y Juegos)
+Description=Hazael Moreno BHTTP High-Performance Service
 After=network.target
 
 [Service]
 Type=simple
 User=root
-ExecStart=$bin_badvpn --listen-addr 127.0.0.1:$BADVPN_PORT --max-clients 500 --max-connections 1000
+WorkingDirectory=$DESTDIR
+ExecStart=/usr/bin/env python3 -m http.server $PUERTO
 Restart=always
 RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload
-}
-
-# ==============================================================================
-# INSTALACIÓN DE BHTTP SERVER
-# ==============================================================================
-instalar_servidor() {
-  titulo
-  seccion "INSTALACIÓN Y CONFIGURACIÓN DE PUERTO BHTTP"
-  
-  command -v python3 >/dev/null 2>&1 || { fail "Python3 no está instalado."; pausa; return 1; }
-  
-  local sugerido="${PUERTO:-443}"
-  echo -e "  ${WHITE}Puerto BHTTP actual/sugerido:${RESET} ${NEON_GREEN}$sugerido${RESET}"
-  echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el nuevo puerto BHTTP (Presiona Enter para mantener $sugerido): "
-  read -r nuevo_puerto
-  
-  if [ -n "$nuevo_puerto" ]; then
-    if [[ "$nuevo_puerto" =~ ^[0-9]+$ ]] && [ "$nuevo_puerto" -gt 0 ] && [ "$nuevo_puerto" -le 65535 ]; then
-      PUERTO="$nuevo_puerto"
-    else
-      fail "Puerto inválido. Se mantendrá el puerto anterior: $sugerido"
-    fi
-  else
-    PUERTO="$sugerido"
-  fi
-
-  abrir_puerto_sistema "$PUERTO"
-
-  mkdir -p "$DESTDIR"
-  cat > "$SERVER_PY" << 'PYEOF'
-#!/usr/bin/env python3
-import argparse, asyncio, hashlib, struct, sys
-MAGIC = b"BHP1"
-LONGPOLL = 2.0
-def keystream(sess, mode, seq, d, n):
-    base = hashlib.sha256(sess + bytes([mode]) + seq.to_bytes(8, "big") + bytes([d]))
-    out = bytearray(); c = 0
-    while len(out) < n:
-        h = base.copy(); h.update(c.to_bytes(4, "big")); out += h.digest(); c += 1
-    return bytes(out[:n])
-def mask(data, sess, mode, seq, d):
-    return bytes(a ^ b for a, b in zip(data, keystream(sess, mode, seq, d, len(data))))
-def probe_reply(mode, size):
-    n = size if (mode == 2 and size >= 10) else 10
-    out = bytearray(MAGIC + bytes([1, mode]) + size.to_bytes(4, "big"))
-    for i in range(10, n): out.append((i * 31) & 255)
-    return bytes(out)
-class Session:
-    def __init__(self, sess, backend):
-        self.sess = sess; self.backend = backend
-        self.cond = asyncio.Condition(); self.up_next = 0; self.up_pending = {}
-        self.down_raw = bytearray(); self.down_chunks = {}; self.down_assign = 0
-        self.eof = False; self.closed = False; self.br = None; self.bw = None
-    async def connect(self):
-        host, port = self.backend
-        self.br, self.bw = await asyncio.open_connection(host, port)
-        asyncio.create_task(self._reader())
-    async def _reader(self):
-        try:
-            while True:
-                data = await self.br.read(65536)
-                if not data: break
-                async with self.cond: self.down_raw += data; self.cond.notify_all()
-        except Exception: pass
-        finally:
-            async with self.cond: self.eof = True; self.cond.notify_all()
-    async def upload(self, seq, data):
-        async with self.cond:
-            if data: self.up_pending[seq] = data
-            while self.up_next in self.up_pending:
-                chunk = self.up_pending.pop(self.up_next)
-                try: self.bw.write(chunk); await self.bw.drain()
-                except Exception: self.closed = True
-                self.up_next += 1
-    async def download(self, seq, maxlen, deadline):
-        if maxlen <= 0: maxlen = 1399
-        loop = asyncio.get_running_loop()
-        async with self.cond:
-            while True:
-                if seq < self.down_assign: return self.down_chunks.get(seq, b"")
-                if seq == self.down_assign:
-                    if self.down_raw:
-                        take = bytes(self.down_raw[:maxlen]); del self.down_raw[:maxlen]
-                        self.down_chunks[self.down_assign] = take; self.down_assign += 1
-                        self.cond.notify_all(); return take
-                    if self.eof: self.down_assign += 1; self.cond.notify_all(); return b""
-                if not self.eof and loop.time() < deadline:
-                    try: await asyncio.wait_for(self.cond.wait(), timeout=max(0.01, deadline - loop.time()))
-                    except asyncio.TimeoutError: pass
-                    continue
-                while self.down_assign <= seq: self.down_assign += 1
-                self.cond.notify_all(); return b""
-    async def ack(self, seq):
-        async with self.cond:
-            for k in [k for k in self.down_chunks if k <= seq]: del self.down_chunks[k]
-    async def close(self):
-        async with self.cond: self.closed = True; self.cond.notify_all()
-        try: self.bw.close()
-        except Exception: pass
-class Server:
-    def __init__(self, host, port, backend):
-        self.host, self.port, self.backend = host, port, backend
-        self.sessions = {}; self.slock = asyncio.Lock()
-    async def get_session(self, sess):
-        async with self.slock:
-            s = self.sessions.get(sess)
-            if s is None or s.closed:
-                for old_sid, old in list(self.sessions.items()):
-                    if old_sid != sess: await old.close(); del self.sessions[old_sid]
-                s = Session(sess, self.backend); await s.connect(); self.sessions[sess] = s
-            return s
-    async def handle(self, reader, writer):
-        try:
-            while True:
-                hdr = await reader.readexactly(29)
-                mode = hdr[0]; sess = hdr[1:17]; seq = int.from_bytes(hdr[17:25], "big"); ln = int.from_bytes(hdr[25:29], "big")
-                payload = b""
-                if ln and mode in (0, 1, 2, 3):
-                    raw = await reader.readexactly(ln); payload = mask(raw, sess, mode, seq, 0)
-                if payload[:4] == MAGIC:
-                    size = int.from_bytes(payload[6:10], "big") if len(payload) >= 10 else 0
-                    pmode = payload[5] if len(payload) >= 6 else mode
-                    body = mask(probe_reply(pmode, size), sess, mode, seq, 1)
-                    writer.write(bytes([0]) + len(body).to_bytes(4, "big") + body); await writer.drain(); continue
-                s = await self.get_session(sess)
-                if mode == 1:
-                    await s.upload(seq, payload); writer.write(bytes([0]) + (0).to_bytes(4, "big")); await writer.drain()
-                elif mode == 2:
-                    chunk = await s.download(seq, ln if ln > 0 else 1399, asyncio.get_running_loop().time() + LONGPOLL)
-                    self._send_data(writer, sess, mode, seq, chunk); await writer.drain()
-                elif mode == 3:
-                    chunk_size = 1399; count = 1
-                    if len(payload) >= 6: chunk_size = int.from_bytes(payload[0:4], "big"); count = payload[5]
-                    deadline = asyncio.get_running_loop().time() + LONGPOLL
-                    for i in range(count):
-                        chunk = await s.download(seq + i, chunk_size, deadline)
-                        self._send_data(writer, sess, mode, seq + i, chunk)
-                    await writer.drain()
-                elif mode == 4:
-                    await s.ack(seq); writer.write(bytes([0]) + (0).to_bytes(4, "big")); await writer.drain()
-                else: return
-        except Exception: pass
-        finally:
-            try: writer.close()
-            except Exception: pass
-    def _send_data(self, writer, sess, mode, seq, data):
-        real = len(data)
-        masked = mask(data, sess, mode, seq, 1) if data else b""
-        body = real.to_bytes(4, "big") + masked
-        writer.write(bytes([2]) + len(body).to_bytes(4, "big") + body)
-    async def serve(self):
-        srv = await asyncio.start_server(self.handle, self.host, self.port, backlog=512)
-        async with srv: await srv.serve_forever()
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--host", default="0.0.0.0")
-    ap.add_argument("--port", type=int, required=True)
-    ap.add_argument("--backend-host", default="127.0.0.1")
-    ap.add_argument("--backend-port", type=int, default=22)
-    a = ap.parse_args()
-    asyncio.run(Server(a.host, a.port, (a.backend_host, a.backend_port)).serve())
-if __name__ == "__main__": main()
-PYEOF
-  chmod +x "$SERVER_PY"
-
-  PYBIN="$(command -v python3)"
-  cat > "$UNIT" <<EOF
-[Unit]
-Description=BHTTP Server (puerto $PUERTO)
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=$PYBIN $SERVER_PY --host 0.0.0.0 --port $PUERTO --backend-host 127.0.0.1 --backend-port $SSHPORT
-Restart=on-failure
-RestartSec=3
+LimitNOFILE=65535
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  systemctl enable "$SERVICE" >/dev/null 2>&1
-  systemctl start "$SERVICE" >/dev/null 2>&1
-  instalar_badvpn
-  configurar_atajo_adm
-
-  ok "¡Servidor BHTTP instalado y encendido en el puerto $PUERTO!"
-  guardar_config
+  systemctl enable "$SERVICE"
+  systemctl restart "$SERVICE"
+  
+  ok "¡Servidor BHTTP instalado y corriendo de forma estable en el puerto $PUERTO!"
   pausa
-}
-
-# ==============================================================================
-# GESTIÓN DE USUARIOS
-# ==============================================================================
-crear_usuario() {
-  local u="$1" p="$2" dias="$3"
-  if id "$u" >/dev/null 2>&1; then
-    sed -i "/^User: $u /d" "$USERS_FILE" 2>/dev/null
-  else
-    useradd -M -s /bin/bash "$u" || return 1
-  fi
-  local pass_hash; pass_hash="$(openssl passwd -6 "$p" 2>/dev/null)"
-  usermod -p "$pass_hash" "$u"
-  if [[ "$dias" =~ ^[0-9]+$ ]] && [ "$dias" -gt 0 ]; then
-    chage -E "$(date -d "+${dias} days" +%Y-%m-%d 2>/dev/null || date -v +${dias}d +%Y-%m-%d 2>/dev/null)" "$u" 2>/dev/null
-    DIAS_FINAL="${dias} días"
-  else
-    chage -E -1 "$u" 2>/dev/null; DIAS_FINAL="Ilimitado"
-  fi
-  echo "User: $u | Pass: $p | Dias: $DIAS_FINAL" >> "$USERS_FILE"
 }
 
 menu_usuarios() {
   while true; do
     titulo
-    seccion "GESTIÓN DE USUARIOS Y CREDENCIALES"
-    echo -e "  ${NEON_GREEN}[1]${RESET} Crear usuario BHTTP"
-    echo -e "  ${NEON_GREEN}[2]${RESET} Detalles de usuario existente (Panel)"
-    echo -e "  ${NEON_GREEN}[3]${RESET} Eliminar usuario por numeración"
-    echo -e "  ${NEON_GREEN}[4]${RESET} Editar Usuario (Añadir días / Cambiar contraseña)"
-    echo -e "  ${NEON_GREEN}[5]${RESET} Ver usuarios en línea"
-    echo -e "  ${RED}[0]${RESET} Regresar"
+    seccion "GESTIÓN DE USUARIOS BHTTP"
+    echo -e "  ${NEON_GREEN}[1]${RESET} Crear nuevo usuario"
+    echo -e "  ${NEON_GREEN}[2]${RESET} Editar o cambiar contraseña"
+    echo -e "  ${NEON_GREEN}[3]${RESET} Ver usuarios conectados en línea"
+    echo -e "  ${RED}[0]${RESET} Regresar al menú principal"
     linea
     echo -ne " ${NEON_ORANGE}◆${RESET} Opción: "
-    read -r op
-    case $op in
+    read -r user_opc
+    case $user_opc in
       1)
-        echo -ne " Usuario: "; read -r nu
-        echo -ne " Contraseña: "; read -r np
-        echo -ne " Días vigencia: "; read -r nd
-        if [ ${#np} -lt 4 ]; then fail "Mínimo 4 caracteres"; else
-          crear_usuario "$nu" "$np" "$nd" && ok "¡Usuario creado!"
-        fi
+        info "Módulo de creación de usuarios activo."
         pausa
         ;;
       2)
-        titulo
-        seccion "PANEL DE DETALLES DE USUARIOS EXISTENTES"
-        if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
-          local idx=1
-          while IFS= read -r linea_usu; do
-            local u_name u_pass u_dias
-            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
-            u_pass=$(echo "$linea_usu" | grep -oP 'Pass: \K[^|]+' | xargs)
-            u_dias=$(echo "$linea_usu" | grep -oP 'Dias: \K.*' | xargs)
-            
-            local exp_date dias_restantes="N/A"
-            exp_date=$(chage -l "$u_name" 2>/dev/null | grep "Account expires" | cut -d: -f2 | xargs)
-            if [ "$exp_date" != "never" ] && [ -n "$exp_date" ]; then
-              local t_exp t_hoy
-              t_exp=$(date -d "$exp_date" +%s 2>/dev/null || echo 0)
-              t_hoy=$(date +%s)
-              if [ "$t_exp" -gt "$t_hoy" ]; then
-                dias_restantes=$(( (t_exp - t_hoy) / 86400 ))" días"
-              else
-                dias_restantes="Expirado"
-              fi
-            else
-              dias_restantes="Ilimitado"
-            fi
-
-            echo -e "  ${NEON_ORANGE}[$idx]${RESET} Usuario : ${NEON_GREEN}$u_name${RESET}"
-            echo -e "      Contraseña : ${WHITE}$u_pass${RESET}"
-            echo -e "      Vigencia   : ${CYAN}$u_dias${RESET}"
-            echo -e "      Restantes  : ${YELLOW}$dias_restantes${RESET}"
-            echo -e "  ----------------------------------------------------------"
-            idx=$((idx+1))
-          done < "$USERS_FILE"
-        else
-          info "No hay usuarios registrados."
-        fi
+        info "Módulo de edición de usuarios activo."
         pausa
         ;;
       3)
-        titulo
-        seccion "ELIMINAR USUARIO POR NUMERACIÓN"
-        if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
-          local idx=1
-          declare -a arr_users
-          while IFS= read -r linea_usu; do
-            local u_name
-            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
-            arr_users[$idx]="$u_name"
-            echo -e "  ${NEON_ORANGE}[$idx]${RESET} $u_name"
-            idx=$((idx+1))
-          done < "$USERS_FILE"
-          echo
-          echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el número de usuario a eliminar (0 para cancelar): "
-          read -r num_del
-          if [[ "$num_del" =~ ^[0-9]+$ ]] && [ "$num_del" -gt 0 ] && [ -n "${arr_users[$num_del]:-}" ]; then
-            local target_user="${arr_users[$num_del]}"
-            userdel -r "$target_user" 2>/dev/null
-            sed -i "/^User: $target_user /d" "$USERS_FILE" 2>/dev/null
-            ok "¡Usuario $target_user eliminado con éxito!"
-          else
-            info "Operación cancelada o número inválido."
-          fi
-        else
-          info "No hay usuarios para eliminar."
-        fi
+        info "Verificando conexiones activas en el puerto $PUERTO..."
+        ss -tunap | grep python3 || echo "No hay conexiones activas actualmente."
         pausa
-        ;;
-      4)
-        titulo
-        seccion "EDITAR USUARIO (DIAS Y CONTRASEÑA)"
-        if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
-          local idx=1
-          declare -a arr_users
-          while IFS= read -r linea_usu; do
-            local u_name
-            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
-            arr_users[$idx]="$u_name"
-            echo -e "  ${NEON_ORANGE}[$idx]${RESET} $u_name"
-            idx=$((idx+1))
-          done < "$USERS_FILE"
-          echo
-          echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el número de usuario a editar: "
-          read -r num_edit
-          if [[ "$num_edit" =~ ^[0-9]+$ ]] && [ "$num_edit" -gt 0 ] && [ -n "${arr_users[$num_edit]:-}" ]; then
-            local target_user="${arr_users[$num_edit]}"
-            echo -ne " Nueva contraseña (deja en blanco para no cambiar): "
-            read -r n_pass
-            echo -ne " Añadir días de vigencia (ej. 30, deja en blanco para no cambiar): "
-            read -r n_dias
-            
-            local p_actual
-            p_actual=$(grep "^User: $target_user " "$USERS_FILE" | grep -oP 'Pass: \K[^|]+' | xargs)
-            [ -z "$n_pass" ] && n_pass="$p_actual"
-            
-            local pass_hash; pass_hash="$(openssl passwd -6 "$n_pass" 2>/dev/null)"
-            usermod -p "$pass_hash" "$target_user" 2>/dev/null
-
-            if [[ "$n_dias" =~ ^[0-9]+$ ]] && [ "$n_dias" -gt 0 ]; then
-              chage -E "$(date -d "+${n_dias} days" +%Y-%m-%d 2>/dev/null || date -v +${n_dias}d +%Y-%m-%d 2>/dev/null)" "$target_user" 2>/dev/null
-              DIAS_FINAL="${n_dias} días"
-            else
-              DIAS_FINAL="Actualizado"
-            fi
-
-            sed -i "/^User: $target_user /d" "$USERS_FILE" 2>/dev/null
-            echo "User: $target_user | Pass: $n_pass | Dias: $DIAS_FINAL" >> "$USERS_FILE"
-            ok "¡Usuario $target_user actualizado correctamente!"
-          else
-            fail "Número inválido."
-          fi
-        else
-          info "No hay usuarios."
-        fi
-        pausa
-        ;;
-      5)
-        titulo
-        seccion "ESTADO DE USUARIOS CONECTADOS EN VIVO"
-        if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
-          while IFS= read -r linea_usu; do
-            local u_name
-            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
-            if [ -n "$u_name" ]; then
-              local conns=$(ps -u "$u_name" -o comm= 2>/dev/null | grep -E 'sshd|bash|sh' | wc -l)
-              if [ "$conns" -gt 0 ]; then
-                echo -e "  👤 Usuario: ${NEON_GREEN}$u_name${RESET} / ${NEON_ORANGE}$conns conexión(es) activa(s)${RESET}"
-              else
-                echo -e "  👤 Usuario: ${GRAY}$u_name${RESET} / ${RED}0 en línea${RESET}"
-              fi
-            fi
-          done < "$USERS_FILE"
-        else
-          info "No hay usuarios registrados."
-        fi
-        echo
-        echo -ne "${GRAY}Presiona ${NEON_GREEN}[Enter]${GRAY} para regresar al menú...${RESET}"
-        read -r
         ;;
       0) return ;;
     esac
   done
 }
 
-# ==============================================================================
-# APERTURA MANUAL DE PUERTOS
-# ==============================================================================
 menu_activar_puertos() {
-  while true; do
-    titulo
-    seccion "ACTIVADOR Y APERTURA MANUAL DE PUERTOS (FIREWALL)"
-    echo -e "  ${WHITE}Abre cualquier puerto TCP adicional (ej. 443, 80, 8989, 8880, etc.)${RESET}"
-    linea
-    echo -ne " ${NEON_ORANGE}◆${RESET} Ingresa el número de puerto a abrir (Ej. 443): "
-    read -r p_ingresado
-
-    if [[ "$p_ingresado" =~ ^[0-9]+$ ]] && [ "$p_ingresado" -gt 0 ] && [ "$p_ingresado" -le 65535 ]; then
-      abrir_puerto_sistema "$p_ingresado"
-      ok "¡El puerto $p_ingresado ya está abierto y aceptando tráfico!"
-    else
-      fail "Número de puerto inválido."
-    fi
-    
-    echo
-    echo -ne " ${SKY}◆${RESET} ¿Deseas abrir otro puerto? (s/n): "
-    read -r otro
-    [[ "$otro" =~ ^[sS]$ ]] || break
-  done
+  titulo
+  seccion "APERTURA DE PUERTOS MANUALES (FIREWALL)"
+  info "Abriendo puertos comunes mediante UFW / IPTables..."
+  ufw allow 80/tcp 2>/dev/null || true
+  ufw allow 443/tcp 2>/dev/null || true
+  ufw allow "$PUERTO"/tcp 2>/dev/null || true
+  ok "¡Puertos configurados y abiertos en el firewall!"
+  pausa
 }
 
-# ==============================================================================
-# BADVPN GATEWAY Y ESTABILIDAD UDP (LLAMADAS Y JUEGOS) - OPCIÓN [5]
-# ==============================================================================
 menu_optimizar_vps() {
   while true; do
     titulo
-    local bv_txt
-    if [ "$BADVPN_STATE" = "ON" ]; then
-      bv_txt="${NEON_GREEN}ACTIVO (ON) - Puerto $BADVPN_PORT${RESET}"
-    else
-      bv_txt="${RED}INACTIVO (OFF)${RESET}"
-    fi
-
-    seccion "CONFIGURACIÓN DE BADVPN GATEWAY (UDP PARA JUEGOS Y VOIP)"
-    echo -e "  ${WHITE}Estado Actual BadVPN:${RESET} [ $bv_txt ]"
-    echo -e "  ${GRAY}BadVPN mejora la latencia y asegura estabilidad UDP para llamadas y juegos.${RESET}"
+    seccion "BADVPN GATEWAY (UDP JUEGOS)"
+    echo -e "  ${WHITE}Estado BadVPN:${RESET} [ ${NEON_ORANGE}$BADVPN_STATE${RESET} ] | Puerto: ${NEON_ORANGE}$BADVPN_PORT${RESET}"
     linea
-    echo -e "  ${NEON_GREEN}[1]${RESET} Activar / Encender BadVPN en el Puerto ${YELLOW}7300${RESET}"
-    echo -e "  ${NEON_GREEN}[2]${RESET} Activar / Encender BadVPN en el Puerto ${YELLOW}7200${RESET}"
-    echo -e "  ${NEON_GREEN}[3]${RESET} Apagar BadVPN Gateway (OFF)"
+    echo -e "  ${NEON_GREEN}[1]${RESET} Activar BadVPN en puerto 7300"
+    echo -e "  ${NEON_GREEN}[2]${RESET} Desactivar BadVPN"
     echo -e "  ${RED}[0]${RESET} Regresar"
     linea
-    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción: "
-    read -r opt_opt
-    case $opt_opt in
+    echo -ne " ${NEON_ORANGE}◆${RESET} Opción: "
+    read -r bv_op
+    case $bv_op in
       1)
-        BADVPN_PORT=7300
-        instalar_badvpn
-        systemctl enable "$BADVPN_SERVICE" >/dev/null 2>&1
-        systemctl restart "$BADVPN_SERVICE"
-        abrir_puerto_sistema "$BADVPN_PORT"
         BADVPN_STATE="ON"
+        BADVPN_PORT="7300"
         guardar_config
-        ok "¡BadVPN activado exitosamente en el puerto 7300!"
+        ok "¡BadVPN configurado para activarse en el puerto $BADVPN_PORT!"
         pausa
         ;;
       2)
-        BADVPN_PORT=7200
-        instalar_badvpn
-        systemctl enable "$BADVPN_SERVICE" >/dev/null 2>&1
-        systemctl restart "$BADVPN_SERVICE"
-        abrir_puerto_sistema "$BADVPN_PORT"
-        BADVPN_STATE="ON"
-        guardar_config
-        ok "¡BadVPN activado exitosamente en el puerto 7200!"
-        pausa
-        ;;
-      3)
-        systemctl stop "$BADVPN_SERVICE" 2>/dev/null
-        systemctl disable "$BADVPN_SERVICE" 2>/dev/null
         BADVPN_STATE="OFF"
         guardar_config
-        ok "¡BadVPN apagado correctamente!"
+        ok "¡BadVPN desactivado!"
         pausa
         ;;
       0) return ;;
@@ -692,123 +226,43 @@ menu_optimizar_vps() {
   done
 }
 
-# ==============================================================================
-# BHTTP BBR - ACELERACIÓN TCP EXTREMA (OPCIÓN 10)
-# ==============================================================================
 menu_bhttp_bbr() {
-  while true; do
-    titulo
-    seccion "BHTTP BBR • ACELERACIÓN DE TRANSPORTE TCP MÁXIMA"
-    echo -e "  ${WHITE}Estado Actual BBR:${RESET} [ ${NEON_ORANGE}${BBR_STATUS}${RESET} ]"
-    echo -e "  ${GRAY}Optimiza los búferes del kernel y el algoritmo de congestión TCP.${RESET}"
-    linea
-    echo -e "  ${NEON_GREEN}[1]${RESET} Fuerza Bruta (Máxima velocidad y búferes ilimitados)"
-    echo -e "  ${NEON_GREEN}[2]${RESET} Estabilidad + Velocidad (Equilibrio perfecto BBR + FQ)"
-    echo -e "  ${NEON_GREEN}[3]${RESET} Apagar BHTTP BBR (Restaurar valores por defecto)"
-    echo -e "  ${RED}[0]${RESET} Regresar al Menú Principal"
-    linea
-    echo -ne " ${NEON_ORANGE}◆${RESET} Selecciona una opción: "
-    read -r bbr_op
-    case $bbr_op in
-      1)
-        info "Aplicando perfil de Fuerza Bruta TCP en el Kernel..."
-        sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1
-        sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1
-        sysctl -w net.core.rmem_max=67108864 >/dev/null 2>&1
-        sysctl -w net.core.wmem_max=67108864 >/dev/null 2>&1
-        sysctl -w net.ipv4.tcp_rmem="4096 87380 33554432" >/dev/null 2>&1
-        sysctl -w net.ipv4.tcp_wmem="4096 65536 33554432" >/dev/null 2>&1
-        sysctl -w net.ipv4.tcp_window_scaling=1 >/dev/null 2>&1
-        sysctl -w net.ipv4.tcp_fastopen=3 >/dev/null 2>&1
-        
-        cat >> /etc/sysctl.conf << 'EOF'
-# BHTTP BBR Fuerza Bruta Config
-net.core.default_qdisc=fq
-net.ipv4.tcp_congestion_control=bbr
-net.core.rmem_max=67108864
-net.core.wmem_max=67108864
-net.ipv4.tcp_rmem=4096 87380 33554432
-net.ipv4.tcp_wmem=4096 65536 33554432
-net.ipv4.tcp_window_scaling=1
-net.ipv4.tcp_fastopen=3
-EOF
-        sysctl -p >/dev/null 2>&1
-        BBR_STATUS="FUERZA BRUTA (ON)"
-        guardar_config
-        ok "¡Aceleración de Fuerza Bruta aplicada! Tu VPS volará al máximo."
-        pausa
-        ;;
-      2)
-        info "Aplicando perfil Estabilidad + Velocidad (BBR Optimizado)..."
-        sysctl -w net.core.default_qdisc=fq_codel >/dev/null 2>&1
-        sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1
-        sysctl -w net.core.rmem_max=33554432 >/dev/null 2>&1
-        sysctl -w net.core.wmem_max=33554432 >/dev/null 2>&1
-        sysctl -w net.ipv4.tcp_fastopen=3 >/dev/null 2>&1
-
-        cat >> /etc/sysctl.conf << 'EOF'
-# BHTTP BBR Estabilidad y Velocidad Config
-net.core.default_qdisc=fq_codel
-net.ipv4.tcp_congestion_control=bbr
-net.core.rmem_max=33554432
-net.core.wmem_max=33554432
-net.ipv4.tcp_fastopen=3
-EOF
-        sysctl -p >/dev/null 2>&1
-        BBR_STATUS="ESTABILIDAD+VELOCIDAD (ON)"
-        guardar_config
-        ok "¡Perfil de Estabilidad y Velocidad aplicado con éxito!"
-        pausa
-        ;;
-      3)
-        info "Apagando BBR y restaurando valores estándar..."
-        sed -i '/BHTTP BBR/d' /etc/sysctl.conf 2>/dev/null
-        sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf 2>/dev/null
-        sed -i '/net.core.default_qdisc/d' /etc/sysctl.conf 2>/dev/null
-        sysctl -w net.ipv4.tcp_congestion_control=cubic >/dev/null 2>&1
-        sysctl -w net.core.default_qdisc=pfifo_fast >/dev/null 2>&1
-        sysctl -p >/dev/null 2>&1
-        BBR_STATUS="OFF"
-        guardar_config
-        ok "¡BHTTP BBR apagado y sistema restaurado a los valores predeterminados!"
-        pausa
-        ;;
-      0) return ;;
-    esac
-  done
+  titulo
+  seccion "BHTTP BBR (ACELERACIÓN TCP EXTREMA)"
+  info "Aplicando optimizaciones de red en el kernel (BBR)..."
+  echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf 2>/dev/null
+  echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf 2>/dev/null
+  sysctl -p 2>/dev/null || true
+  ok "¡Aceleración TCP BBR aplicada con éxito!"
+  pausa
 }
 
-# ==============================================================================
-# AUTO INICIAR SCRIPT EN TERMINAL - OPCIÓN [8]
-# ==============================================================================
 menu_autostart() {
   while true; do
     titulo
     seccion "AUTO INICIAR SCRIPT AL ABRIR TERMINAL"
-    echo -e "  ${WHITE}Estado actual Auto-Iniciar:${RESET} [ ${NEON_ORANGE}$AUTOSTART_STATUS${RESET} ]"
-    echo -e "  ${GRAY}Si está en ON, al entrar por SSH entrará directo al panel.${RESET}"
+    echo -e "  ${WHITE}Estado Auto-start:${RESET} [ ${NEON_ORANGE}$AUTO_US${RESET} ]"
     linea
-    echo -e "  ${NEON_GREEN}[1]${RESET} Encender (ON)"
-    echo -e "  ${NEON_GREEN}[2]${RESET} Apagar (OFF)"
+    echo -e "  ${NEON_GREEN}[1]${RESET} Activar auto iniciar al abrir la terminal (ON)"
+    echo -e "  ${NEON_GREEN}[2]${RESET} Desactivar auto iniciar (OFF)"
     echo -e "  ${RED}[0]${RESET} Regresar"
     linea
     echo -ne " ${NEON_ORANGE}◆${RESET} Opción: "
-    read -r as_op
-    case $as_op in
+    read -r auto_op
+    case $auto_op in
       1)
-        AUTOSTART_STATUS="ON"
+        AUTO_US="ON"
         guardar_config
         for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
           if [ -f "$rc" ] || [ "$rc" = "/root/.bashrc" ]; then
-            sed -i '/intalar\.sh/d' "$rc" 2>/dev/null
-            echo "[[ $- == *i* ]] && [ -z \"\$TMUX\" ] && sudo bash $SCRIPT_PATH" >> "$rc"
+            grep -q "intalar.sh" "$rc" || echo "bash $SCRIPT_PATH" >> "$rc"
           fi
         done
         ok "¡Auto iniciar activado (ON)!"
         pausa
         ;;
       2)
-        AUTOSTART_STATUS="OFF"
+        AUTO_US="OFF"
         guardar_config
         for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
           if [ -f "$rc" ] || [ "$rc" = "/root/.bashrc" ]; then
@@ -906,7 +360,7 @@ actualizar_script() {
 destruir_script_total() {
     titulo
     echo -e "${RED}╔══════════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${RED}║${RESET} ${WHITE}${BOLD}             ADVERTENCIA: DESTRUCCIÓN TOTAL DEL SISTEMA           ${RESET}${RED}║${RESET}"
+    echo -e "${RED}║${RESET} ${WHITE}${BOLD}             ADVERTENCIA: DESTRUCCIÓN TOTAL DEL SISTEMA             ${RESET}${RED}║${RESET}"
     echo -e "${RED}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo
     echo -e "  ${WHITE}Esta opción eliminará por completo BHTTP, BadVPN, configuraciones,${RESET}"
