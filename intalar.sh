@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v8.3 (SSH Banner Strip & Clean Bridge)
+#        PREMIUM SERVER EDITION v8.0 (Con Opción de Destrucción Total [11])
 # ==============================================================================
 
 set -o pipefail
@@ -138,7 +138,7 @@ titulo() {
     ip_maquina=$(obtener_ip_publica)
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v8.3${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v8.0${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
     echo
@@ -230,7 +230,7 @@ EOF
 }
 
 # ==============================================================================
-# INSTALACIÓN DE BHTTP SERVER (Versión con Filtro de Banner SSH incorporado)
+# INSTALACIÓN DE BHTTP SERVER
 # ==============================================================================
 instalar_servidor() {
   titulo
@@ -258,229 +258,128 @@ instalar_servidor() {
   mkdir -p "$DESTDIR"
   cat > "$SERVER_PY" << 'PYEOF'
 #!/usr/bin/env python3
-import argparse, asyncio, hashlib, sys
-
+import argparse, asyncio, hashlib, struct, sys
 MAGIC = b"BHP1"
 LONGPOLL = 2.0
-
 def keystream(sess, mode, seq, d, n):
     base = hashlib.sha256(sess + bytes([mode]) + seq.to_bytes(8, "big") + bytes([d]))
     out = bytearray(); c = 0
     while len(out) < n:
         h = base.copy(); h.update(c.to_bytes(4, "big")); out += h.digest(); c += 1
     return bytes(out[:n])
-
 def mask(data, sess, mode, seq, d):
     return bytes(a ^ b for a, b in zip(data, keystream(sess, mode, seq, d, len(data))))
-
 def probe_reply(mode, size):
     n = size if (mode == 2 and size >= 10) else 10
     out = bytearray(MAGIC + bytes([1, mode]) + size.to_bytes(4, "big"))
     for i in range(10, n): out.append((i * 31) & 255)
     return bytes(out)
-
 class Session:
     def __init__(self, sess, backend):
-        self.sess = sess
-        self.backend = backend
-        self.cond = asyncio.Condition()
-        self.up_queue = asyncio.Queue()
-        self.down_raw = bytearray()
-        self.down_chunks = {}
-        self.down_assign = 0
-        self.eof = False
-        self.closed = False
-        self.br = None
-        self.bw = None
-        self.ul_task = None
-
+        self.sess = sess; self.backend = backend
+        self.cond = asyncio.Condition(); self.up_next = 0; self.up_pending = {}
+        self.down_raw = bytearray(); self.down_chunks = {}; self.down_assign = 0
+        self.eof = False; self.closed = False; self.br = None; self.bw = None
     async def connect(self):
         host, port = self.backend
-        try:
-            self.br, self.bw = await asyncio.open_connection(host, port)
-            
-            # DESCARTAR EL BANNER SSH INICIAL PARA EVITAR DESINCRONIZACIÓN DE BYTES
-            try:
-                initial_banner = await asyncio.wait_for(self.br.readline(), timeout=1.0)
-                if not initial_banner.startswith(b"SSH-"):
-                    # Si no era un banner puro, reinyectamos los datos al flujo de bajada
-                    self.down_raw += initial_banner
-            except Exception:
-                pass
-
-            asyncio.create_task(self._reader())
-            self.ul_task = asyncio.create_task(self._uploader())
-        except Exception:
-            self.closed = True
-
+        self.br, self.bw = await asyncio.open_connection(host, port)
+        asyncio.create_task(self._reader())
     async def _reader(self):
         try:
-            while not self.closed:
+            while True:
                 data = await self.br.read(65536)
-                if not data:
-                    break
-                async with self.cond:
-                    self.down_raw += data
-                    self.cond.notify_all()
-        except Exception:
-            pass
+                if not data: break
+                async with self.cond: self.down_raw += data; self.cond.notify_all()
+        except Exception: pass
         finally:
-            async with self.cond:
-                self.eof = True
-                self.cond.notify_all()
-
-    async def _uploader(self):
-        try:
-            while not self.closed:
-                chunk = await self.up_queue.get()
-                if chunk is None:
-                    break
-                self.bw.write(chunk)
-                await self.bw.drain()
-        except Exception:
-            self.closed = True
-
+            async with self.cond: self.eof = True; self.cond.notify_all()
     async def upload(self, seq, data):
-        if data and not self.closed:
-            await self.up_queue.put(data)
-
+        async with self.cond:
+            if data: self.up_pending[seq] = data
+            while self.up_next in self.up_pending:
+                chunk = self.up_pending.pop(self.up_next)
+                try: self.bw.write(chunk); await self.bw.drain()
+                except Exception: self.closed = True
+                self.up_next += 1
     async def download(self, seq, maxlen, deadline):
         if maxlen <= 0: maxlen = 1399
         loop = asyncio.get_running_loop()
         async with self.cond:
-            while not self.closed:
-                if seq < self.down_assign:
-                    return self.down_chunks.get(seq, b"")
+            while True:
+                if seq < self.down_assign: return self.down_chunks.get(seq, b"")
                 if seq == self.down_assign:
                     if self.down_raw:
-                        take = bytes(self.down_raw[:maxlen])
-                        del self.down_raw[:maxlen]
-                        self.down_chunks[self.down_assign] = take
-                        self.down_assign += 1
-                        self.cond.notify_all()
-                        return take
-                    if self.eof:
-                        self.down_assign += 1
-                        self.cond.notify_all()
-                        return b""
+                        take = bytes(self.down_raw[:maxlen]); del self.down_raw[:maxlen]
+                        self.down_chunks[self.down_assign] = take; self.down_assign += 1
+                        self.cond.notify_all(); return take
+                    if self.eof: self.down_assign += 1; self.cond.notify_all(); return b""
                 if not self.eof and loop.time() < deadline:
-                    try:
-                        await asyncio.wait_for(self.cond.wait(), timeout=max(0.01, deadline - loop.time()))
-                    except asyncio.TimeoutError:
-                        pass
+                    try: await asyncio.wait_for(self.cond.wait(), timeout=max(0.01, deadline - loop.time()))
+                    except asyncio.TimeoutError: pass
                     continue
-                while self.down_assign <= seq:
-                    self.down_assign += 1
-                self.cond.notify_all()
-                return b""
-            return b""
-
+                while self.down_assign <= seq: self.down_assign += 1
+                self.cond.notify_all(); return b""
     async def ack(self, seq):
         async with self.cond:
-            for k in [k for k in self.down_chunks if k <= seq]:
-                del self.down_chunks[k]
-
+            for k in [k for k in self.down_chunks if k <= seq]: del self.down_chunks[k]
     async def close(self):
-        async with self.cond:
-            self.closed = True
-            self.cond.notify_all()
-        await self.up_queue.put(None)
-        try:
-            if self.bw:
-                self.bw.close()
-        except Exception:
-            pass
-
+        async with self.cond: self.closed = True; self.cond.notify_all()
+        try: self.bw.close()
+        except Exception: pass
 class Server:
     def __init__(self, host, port, backend):
-        self.host = host
-        self.port = port
-        self.backend = backend
-        self.sessions = {}
-        self.slock = asyncio.Lock()
-
+        self.host, self.port, self.backend = host, port, backend
+        self.sessions = {}; self.slock = asyncio.Lock()
     async def get_session(self, sess):
         async with self.slock:
             s = self.sessions.get(sess)
             if s is None or s.closed:
                 for old_sid, old in list(self.sessions.items()):
-                    if old_sid != sess:
-                        await old.close()
-                        del self.sessions[old_sid]
-                s = Session(sess, self.backend)
-                await s.connect()
-                self.sessions[sess] = s
+                    if old_sid != sess: await old.close(); del self.sessions[old_sid]
+                s = Session(sess, self.backend); await s.connect(); self.sessions[sess] = s
             return s
-
     async def handle(self, reader, writer):
         try:
             while True:
                 hdr = await reader.readexactly(29)
-                mode = hdr[0]
-                sess = hdr[1:17]
-                seq = int.from_bytes(hdr[17:25], "big")
-                ln = int.from_bytes(hdr[25:29], "big")
-                
-                if ln > 65535 or ln < 0:
-                    break
-
+                mode = hdr[0]; sess = hdr[1:17]; seq = int.from_bytes(hdr[17:25], "big"); ln = int.from_bytes(hdr[25:29], "big")
                 payload = b""
                 if ln and mode in (0, 1, 2, 3):
-                    raw = await reader.readexactly(ln)
-                    payload = mask(raw, sess, mode, seq, 0)
-
+                    raw = await reader.readexactly(ln); payload = mask(raw, sess, mode, seq, 0)
                 if payload[:4] == MAGIC:
                     size = int.from_bytes(payload[6:10], "big") if len(payload) >= 10 else 0
                     pmode = payload[5] if len(payload) >= 6 else mode
                     body = mask(probe_reply(pmode, size), sess, mode, seq, 1)
-                    writer.write(bytes([0]) + len(body).to_bytes(4, "big") + body)
-                    await writer.drain()
-                    continue
-
+                    writer.write(bytes([0]) + len(body).to_bytes(4, "big") + body); await writer.drain(); continue
                 s = await self.get_session(sess)
                 if mode == 1:
-                    await s.upload(seq, payload)
-                    writer.write(bytes([0]) + (0).to_bytes(4, "big"))
-                    await writer.drain()
+                    await s.upload(seq, payload); writer.write(bytes([0]) + (0).to_bytes(4, "big")); await writer.drain()
                 elif mode == 2:
                     chunk = await s.download(seq, ln if ln > 0 else 1399, asyncio.get_running_loop().time() + LONGPOLL)
-                    self._send_data(writer, sess, mode, seq, chunk)
-                    await writer.drain()
+                    self._send_data(writer, sess, mode, seq, chunk); await writer.drain()
                 elif mode == 3:
                     chunk_size = 1399; count = 1
-                    if len(payload) >= 6:
-                        chunk_size = int.from_bytes(payload[0:4], "big")
-                        count = payload[5]
+                    if len(payload) >= 6: chunk_size = int.from_bytes(payload[0:4], "big"); count = payload[5]
                     deadline = asyncio.get_running_loop().time() + LONGPOLL
                     for i in range(count):
                         chunk = await s.download(seq + i, chunk_size, deadline)
                         self._send_data(writer, sess, mode, seq + i, chunk)
                     await writer.drain()
                 elif mode == 4:
-                    await s.ack(seq)
-                    writer.write(bytes([0]) + (0).to_bytes(4, "big"))
-                    await writer.drain()
-                else:
-                    break
-        except Exception:
-            pass
+                    await s.ack(seq); writer.write(bytes([0]) + (0).to_bytes(4, "big")); await writer.drain()
+                else: return
+        except Exception: pass
         finally:
-            try:
-                writer.close()
-            except Exception:
-                pass
-
+            try: writer.close()
+            except Exception: pass
     def _send_data(self, writer, sess, mode, seq, data):
         real = len(data)
         masked = mask(data, sess, mode, seq, 1) if data else b""
         body = real.to_bytes(4, "big") + masked
         writer.write(bytes([2]) + len(body).to_bytes(4, "big") + body)
-
     async def serve(self):
         srv = await asyncio.start_server(self.handle, self.host, self.port, backlog=512)
-        async with srv:
-            await srv.serve_forever()
-
+        async with srv: await srv.serve_forever()
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="0.0.0.0")
@@ -489,9 +388,7 @@ def main():
     ap.add_argument("--backend-port", type=int, default=22)
     a = ap.parse_args()
     asyncio.run(Server(a.host, a.port, (a.backend_host, a.backend_port)).serve())
-
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__": main()
 PYEOF
   chmod +x "$SERVER_PY"
 
@@ -532,16 +429,13 @@ crear_usuario() {
   else
     useradd -M -s /bin/bash "$u" || return 1
   fi
-  local pass_hash
-  pass_hash="$(openssl passwd -6 "$p" 2>/dev/null)"
+  local pass_hash; pass_hash="$(openssl passwd -6 "$p" 2>/dev/null)"
   usermod -p "$pass_hash" "$u"
-  local DIAS_FINAL=""
   if [[ "$dias" =~ ^[0-9]+$ ]] && [ "$dias" -gt 0 ]; then
     chage -E "$(date -d "+${dias} days" +%Y-%m-%d 2>/dev/null || date -v +${dias}d +%Y-%m-%d 2>/dev/null)" "$u" 2>/dev/null
     DIAS_FINAL="${dias} días"
   else
-    chage -E -1 "$u" 2>/dev/null
-    DIAS_FINAL="Ilimitado"
+    chage -E -1 "$u" 2>/dev/null; DIAS_FINAL="Ilimitado"
   fi
   echo "User: $u | Pass: $p | Dias: $DIAS_FINAL" >> "$USERS_FILE"
 }
@@ -575,11 +469,10 @@ menu_usuarios() {
         if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
           local idx=1
           while IFS= read -r linea_usu; do
-            [ -z "$linea_usu" ] && continue
             local u_name u_pass u_dias
-            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | tr -d '\r' | xargs)
-            u_pass=$(echo "$linea_usu" | grep -oP 'Pass: \K[^|]+' | tr -d '\r' | xargs)
-            u_dias=$(echo "$linea_usu" | grep -oP 'Dias: \K.*' | tr -d '\r' | xargs)
+            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
+            u_pass=$(echo "$linea_usu" | grep -oP 'Pass: \K[^|]+' | xargs)
+            u_dias=$(echo "$linea_usu" | grep -oP 'Dias: \K.*' | xargs)
             
             local exp_date dias_restantes="N/A"
             exp_date=$(chage -l "$u_name" 2>/dev/null | grep "Account expires" | cut -d: -f2 | xargs)
@@ -615,9 +508,8 @@ menu_usuarios() {
           local idx=1
           declare -a arr_users
           while IFS= read -r linea_usu; do
-            [ -z "$linea_usu" ] && continue
             local u_name
-            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | tr -d '\r' | xargs)
+            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
             arr_users[$idx]="$u_name"
             echo -e "  ${NEON_ORANGE}[$idx]${RESET} $u_name"
             idx=$((idx+1))
@@ -645,9 +537,8 @@ menu_usuarios() {
           local idx=1
           declare -a arr_users
           while IFS= read -r linea_usu; do
-            [ -z "$linea_usu" ] && continue
             local u_name
-            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | tr -d '\r' | xargs)
+            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
             arr_users[$idx]="$u_name"
             echo -e "  ${NEON_ORANGE}[$idx]${RESET} $u_name"
             idx=$((idx+1))
@@ -663,14 +554,12 @@ menu_usuarios() {
             read -r n_dias
             
             local p_actual
-            p_actual=$(grep "^User: $target_user " "$USERS_FILE" | grep -oP 'Pass: \K[^|]+' | tr -d '\r' | xargs)
+            p_actual=$(grep "^User: $target_user " "$USERS_FILE" | grep -oP 'Pass: \K[^|]+' | xargs)
             [ -z "$n_pass" ] && n_pass="$p_actual"
             
-            local pass_hash
-            pass_hash="$(openssl passwd -6 "$n_pass" 2>/dev/null)"
+            local pass_hash; pass_hash="$(openssl passwd -6 "$n_pass" 2>/dev/null)"
             usermod -p "$pass_hash" "$target_user" 2>/dev/null
 
-            local DIAS_FINAL=""
             if [[ "$n_dias" =~ ^[0-9]+$ ]] && [ "$n_dias" -gt 0 ]; then
               chage -E "$(date -d "+${n_dias} days" +%Y-%m-%d 2>/dev/null || date -v +${n_dias}d +%Y-%m-%d 2>/dev/null)" "$target_user" 2>/dev/null
               DIAS_FINAL="${n_dias} días"
@@ -694,9 +583,8 @@ menu_usuarios() {
         seccion "ESTADO DE USUARIOS CONECTADOS EN VIVO"
         if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
           while IFS= read -r linea_usu; do
-            [ -z "$linea_usu" ] && continue
             local u_name
-            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | tr -d '\r' | xargs)
+            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
             if [ -n "$u_name" ]; then
               local conns=$(ps -u "$u_name" -o comm= 2>/dev/null | grep -E 'sshd|bash|sh' | wc -l)
               if [ "$conns" -gt 0 ]; then
@@ -750,7 +638,7 @@ menu_activar_puertos() {
 menu_optimizar_vps() {
   while true; do
     titulo
-    local bv_txt=""
+    local bv_txt
     if [ "$BADVPN_STATE" = "ON" ]; then
       bv_txt="${NEON_GREEN}ACTIVO (ON) - Puerto $BADVPN_PORT${RESET}"
     else
@@ -1067,10 +955,8 @@ menu_principal() {
   configurar_atajo_adm
   while true; do
     titulo
-    local estado=""
+    local estado
     estado=$(systemctl is-active "$SERVICE" 2>/dev/null || echo "inactivo")
-    local estado_color=""
-    local bhttp_port_show=""
     if [ "$estado" = "active" ]; then
       estado_color="${NEON_GREEN}ACTIVO 🟢 (ON)${RESET}"
       bhttp_port_show="${NEON_GREEN}${PUERTO:-443}${RESET}"
@@ -1079,8 +965,6 @@ menu_principal() {
       bhttp_port_show="${RED}Ninguno${RESET}"
     fi
 
-    local bv_color=""
-    local badvpn_port_show=""
     if [ "$BADVPN_STATE" = "ON" ]; then
       bv_color="${NEON_GREEN}ACTIVO 🟢 (ON)${RESET}"
       badvpn_port_show="${NEON_GREEN}${BADVPN_PORT}${RESET}"
