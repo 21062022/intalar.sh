@@ -2,13 +2,13 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v8.1 (Pure Bash, LF Clean, Fixed Packet Size)
+#        PREMIUM SERVER EDITION v8.2 (Fixed Illegal Packet Size / SSH Banner Sync)
 # ==============================================================================
 
 set -o pipefail
 
 # ==============================================================================
-# PALETA DE COLORES VIBRANTES Y NEÓN (Protegidas con comillas dobles)
+# PALETA DE COLORES VIBRANTES Y NEÓN
 # ==============================================================================
 RESET="\e[0m"
 BOLD="\e[1m"
@@ -138,7 +138,7 @@ titulo() {
     ip_maquina=$(obtener_ip_publica)
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v8.1${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v8.2${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
     echo
@@ -230,7 +230,7 @@ EOF
 }
 
 # ==============================================================================
-# INSTALACIÓN DE BHTTP SERVER (Versión FIXED con Queue para evitar desincronización)
+# INSTALACIÓN DE BHTTP SERVER (Versión Anti-Packet-Size / SSH Stream Clean)
 # ==============================================================================
 instalar_servidor() {
   titulo
@@ -261,130 +261,216 @@ instalar_servidor() {
 import argparse, asyncio, hashlib, sys
 MAGIC = b"BHP1"
 LONGPOLL = 2.0
+
 def keystream(sess, mode, seq, d, n):
     base = hashlib.sha256(sess + bytes([mode]) + seq.to_bytes(8, "big") + bytes([d]))
     out = bytearray(); c = 0
     while len(out) < n:
         h = base.copy(); h.update(c.to_bytes(4, "big")); out += h.digest(); c += 1
     return bytes(out[:n])
+
 def mask(data, sess, mode, seq, d):
     return bytes(a ^ b for a, b in zip(data, keystream(sess, mode, seq, d, len(data))))
+
 def probe_reply(mode, size):
     n = size if (mode == 2 and size >= 10) else 10
     out = bytearray(MAGIC + bytes([1, mode]) + size.to_bytes(4, "big"))
     for i in range(10, n): out.append((i * 31) & 255)
     return bytes(out)
+
 class Session:
     def __init__(self, sess, backend):
-        self.sess = sess; self.backend = backend
-        self.cond = asyncio.Condition(); self.up_queue = asyncio.Queue()
-        self.down_raw = bytearray(); self.down_chunks = {}; self.down_assign = 0
-        self.eof = False; self.closed = False; self.br = None; self.bw = None
+        self.sess = sess
+        self.backend = backend
+        self.cond = asyncio.Condition()
+        self.up_queue = asyncio.Queue()
+        self.down_raw = bytearray()
+        self.down_chunks = {}
+        self.down_assign = 0
+        self.eof = False
+        self.closed = False
+        self.br = None
+        self.bw = None
         self.ul_task = None
+
     async def connect(self):
         host, port = self.backend
-        self.br, self.bw = await asyncio.open_connection(host, port)
-        asyncio.create_task(self._reader())
-        self.ul_task = asyncio.create_task(self._uploader())
-    async def _reader(self):
         try:
-            while True:
-                data = await self.br.read(65536)
-                if not data: break
-                async with self.cond: self.down_raw += data; self.cond.notify_all()
-        except Exception: pass
-        finally:
-            async with self.cond: self.eof = True; self.cond.notify_all()
-    async def _uploader(self):
-        try:
-            while True:
-                chunk = await self.up_queue.get()
-                if chunk is None: break
-                self.bw.write(chunk); await self.bw.drain()
+            self.br, self.bw = await asyncio.open_connection(host, port)
+            asyncio.create_task(self._reader())
+            self.ul_task = asyncio.create_task(self._uploader())
         except Exception:
             self.closed = True
+
+    async def _reader(self):
+        try:
+            while not self.closed:
+                data = await self.br.read(65536)
+                if not data:
+                    break
+                async with self.cond:
+                    self.down_raw += data
+                    self.cond.notify_all()
+        except Exception:
+            pass
+        finally:
+            async with self.cond:
+                self.eof = True
+                self.cond.notify_all()
+
+    async def _uploader(self):
+        try:
+            while not self.closed:
+                chunk = await self.up_queue.get()
+                if chunk is None:
+                    break
+                self.bw.write(chunk)
+                await self.bw.drain()
+        except Exception:
+            self.closed = True
+
     async def upload(self, seq, data):
-        if data: await self.up_queue.put(data)
+        if data and not self.closed:
+            await self.up_queue.put(data)
+
     async def download(self, seq, maxlen, deadline):
         if maxlen <= 0: maxlen = 1399
         loop = asyncio.get_running_loop()
         async with self.cond:
-            while True:
-                if seq < self.down_assign: return self.down_chunks.get(seq, b"")
+            while not self.closed:
+                if seq < self.down_assign:
+                    return self.down_chunks.get(seq, b"")
                 if seq == self.down_assign:
                     if self.down_raw:
-                        take = bytes(self.down_raw[:maxlen]); del self.down_raw[:maxlen]
-                        self.down_chunks[self.down_assign] = take; self.down_assign += 1
-                        self.cond.notify_all(); return take
-                    if self.eof: self.down_assign += 1; self.cond.notify_all(); return b""
+                        take = bytes(self.down_raw[:maxlen])
+                        del self.down_raw[:maxlen]
+                        self.down_chunks[self.down_assign] = take
+                        self.down_assign += 1
+                        self.cond.notify_all()
+                        return take
+                    if self.eof:
+                        self.down_assign += 1
+                        self.cond.notify_all()
+                        return b""
                 if not self.eof and loop.time() < deadline:
-                    try: await asyncio.wait_for(self.cond.wait(), timeout=max(0.01, deadline - loop.time()))
-                    except asyncio.TimeoutError: pass
+                    try:
+                        await asyncio.wait_for(self.cond.wait(), timeout=max(0.01, deadline - loop.time()))
+                    except asyncio.TimeoutError:
+                        pass
                     continue
-                while self.down_assign <= seq: self.down_assign += 1
-                self.cond.notify_all(); return b""
+                while self.down_assign <= seq:
+                    self.down_assign += 1
+                self.cond.notify_all()
+                return b""
+            return b""
+
     async def ack(self, seq):
         async with self.cond:
-            for k in [k for k in self.down_chunks if k <= seq]: del self.down_chunks[k]
+            for k in [k for k in self.down_chunks if k <= seq]:
+                del self.down_chunks[k]
+
     async def close(self):
-        async with self.cond: self.closed = True; self.cond.notify_all()
+        async with self.cond:
+            self.closed = True
+            self.cond.notify_all()
         await self.up_queue.put(None)
-        try: self.bw.close()
-        except Exception: pass
+        try:
+            if self.bw:
+                self.bw.close()
+        except Exception:
+            pass
+
 class Server:
     def __init__(self, host, port, backend):
-        self.host, self.port, self.backend = host, port, backend
-        self.sessions = {}; self.slock = asyncio.Lock()
+        self.host = host
+        self.port = port
+        self.backend = backend
+        self.sessions = {}
+        self.slock = asyncio.Lock()
+
     async def get_session(self, sess):
         async with self.slock:
             s = self.sessions.get(sess)
             if s is None or s.closed:
                 for old_sid, old in list(self.sessions.items()):
-                    if old_sid != sess: await old.close(); del self.sessions[old_sid]
-                s = Session(sess, self.backend); await s.connect(); self.sessions[sess] = s
+                    if old_sid != sess:
+                        await old.close()
+                        del self.sessions[old_sid]
+                s = Session(sess, self.backend)
+                await s.connect()
+                self.sessions[sess] = s
             return s
+
     async def handle(self, reader, writer):
         try:
             while True:
                 hdr = await reader.readexactly(29)
-                mode = hdr[0]; sess = hdr[1:17]; seq = int.from_bytes(hdr[17:25], "big"); ln = int.from_bytes(hdr[25:29], "big")
+                mode = hdr[0]
+                sess = hdr[1:17]
+                seq = int.from_bytes(hdr[17:25], "big")
+                ln = int.from_bytes(hdr[25:29], "big")
+                
+                # Validación de seguridad contra tamaños corruptos o desincronización de paquetes
+                if ln > 65535 or ln < 0:
+                    break
+
                 payload = b""
                 if ln and mode in (0, 1, 2, 3):
-                    raw = await reader.readexactly(ln); payload = mask(raw, sess, mode, seq, 0)
+                    raw = await reader.readexactly(ln)
+                    payload = mask(raw, sess, mode, seq, 0)
+
                 if payload[:4] == MAGIC:
                     size = int.from_bytes(payload[6:10], "big") if len(payload) >= 10 else 0
                     pmode = payload[5] if len(payload) >= 6 else mode
                     body = mask(probe_reply(pmode, size), sess, mode, seq, 1)
-                    writer.write(bytes([0]) + len(body).to_bytes(4, "big") + body); await writer.drain(); continue
+                    writer.write(bytes([0]) + len(body).to_bytes(4, "big") + body)
+                    await writer.drain()
+                    continue
+
                 s = await self.get_session(sess)
                 if mode == 1:
-                    await s.upload(seq, payload); writer.write(bytes([0]) + (0).to_bytes(4, "big")); await writer.drain()
+                    await s.upload(seq, payload)
+                    writer.write(bytes([0]) + (0).to_bytes(4, "big"))
+                    await writer.drain()
                 elif mode == 2:
                     chunk = await s.download(seq, ln if ln > 0 else 1399, asyncio.get_running_loop().time() + LONGPOLL)
-                    self._send_data(writer, sess, mode, seq, chunk); await writer.drain()
+                    self._send_data(writer, sess, mode, seq, chunk)
+                    await writer.drain()
                 elif mode == 3:
                     chunk_size = 1399; count = 1
-                    if len(payload) >= 6: chunk_size = int.from_bytes(payload[0:4], "big"); count = payload[5]
+                    if len(payload) >= 6:
+                        chunk_size = int.from_bytes(payload[0:4], "big")
+                        count = payload[5]
                     deadline = asyncio.get_running_loop().time() + LONGPOLL
                     for i in range(count):
                         chunk = await s.download(seq + i, chunk_size, deadline)
                         self._send_data(writer, sess, mode, seq + i, chunk)
                     await writer.drain()
                 elif mode == 4:
-                    await s.ack(seq); writer.write(bytes([0]) + (0).to_bytes(4, "big")); await writer.drain()
-                else: return
-        except Exception: pass
+                    await s.ack(seq)
+                    writer.write(bytes([0]) + (0).to_bytes(4, "big"))
+                    await writer.drain()
+                else:
+                    break
+        except Exception:
+            pass
         finally:
-            try: writer.close()
-            except Exception: pass
+            try:
+                writer.close()
+            except Exception:
+                pass
+
     def _send_data(self, writer, sess, mode, seq, data):
         real = len(data)
         masked = mask(data, sess, mode, seq, 1) if data else b""
         body = real.to_bytes(4, "big") + masked
         writer.write(bytes([2]) + len(body).to_bytes(4, "big") + body)
+
     async def serve(self):
         srv = await asyncio.start_server(self.handle, self.host, self.port, backlog=512)
-        async with srv: await srv.serve_forever()
+        async with srv:
+            await srv.serve_forever()
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="0.0.0.0")
@@ -393,7 +479,9 @@ def main():
     ap.add_argument("--backend-port", type=int, default=22)
     a = ap.parse_args()
     asyncio.run(Server(a.host, a.port, (a.backend_host, a.backend_port)).serve())
-if __name__ == "__main__": main()
+
+if __name__ == "__main__":
+    main()
 PYEOF
   chmod +x "$SERVER_PY"
 
@@ -415,7 +503,7 @@ EOF
 
   systemctl daemon-reload
   systemctl enable "$SERVICE" >/dev/null 2>&1
-  systemctl start "$SERVICE" >/dev/null 2>&1
+  systemctl restart "$SERVICE" >/dev/null 2>&1
   instalar_badvpn
   configurar_atajo_adm
 
