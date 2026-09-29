@@ -2,7 +2,7 @@
 # ==============================================================================
 #        HAZAEL MORENO MULTI SCRIPT INSTALLER - ULTRA CYBER EDITION
 #        BHTTP V.1 & BADVPN PROTOCOL (TIGO Y CLARO NICARAGUA FULL)
-#        PREMIUM SERVER EDITION v8.2 (Fixed Illegal Packet Size / SSH Banner Sync)
+#        PREMIUM SERVER EDITION v8.3 (SSH Banner Strip & Clean Bridge)
 # ==============================================================================
 
 set -o pipefail
@@ -138,7 +138,7 @@ titulo() {
     ip_maquina=$(obtener_ip_publica)
     echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
     echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
-    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v8.2${RESET}             ${NEON_PINK}║${RESET}"
+    echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}            BHTTP V.1 & BADVPN PROTOCOL v8.3${RESET}             ${NEON_PINK}║${RESET}"
     echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
     echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
     echo
@@ -230,7 +230,7 @@ EOF
 }
 
 # ==============================================================================
-# INSTALACIÓN DE BHTTP SERVER (Versión Anti-Packet-Size / SSH Stream Clean)
+# INSTALACIÓN DE BHTTP SERVER (Versión con Filtro de Banner SSH incorporado)
 # ==============================================================================
 instalar_servidor() {
   titulo
@@ -259,6 +259,7 @@ instalar_servidor() {
   cat > "$SERVER_PY" << 'PYEOF'
 #!/usr/bin/env python3
 import argparse, asyncio, hashlib, sys
+
 MAGIC = b"BHP1"
 LONGPOLL = 2.0
 
@@ -297,6 +298,16 @@ class Session:
         host, port = self.backend
         try:
             self.br, self.bw = await asyncio.open_connection(host, port)
+            
+            # DESCARTAR EL BANNER SSH INICIAL PARA EVITAR DESINCRONIZACIÓN DE BYTES
+            try:
+                initial_banner = await asyncio.wait_for(self.br.readline(), timeout=1.0)
+                if not initial_banner.startswith(b"SSH-"):
+                    # Si no era un banner puro, reinyectamos los datos al flujo de bajada
+                    self.down_raw += initial_banner
+            except Exception:
+                pass
+
             asyncio.create_task(self._reader())
             self.ul_task = asyncio.create_task(self._uploader())
         except Exception:
@@ -410,7 +421,6 @@ class Server:
                 seq = int.from_bytes(hdr[17:25], "big")
                 ln = int.from_bytes(hdr[25:29], "big")
                 
-                # Validación de seguridad contra tamaños corruptos o desincronización de paquetes
                 if ln > 65535 or ln < 0:
                     break
 
@@ -503,7 +513,7 @@ EOF
 
   systemctl daemon-reload
   systemctl enable "$SERVICE" >/dev/null 2>&1
-  systemctl restart "$SERVICE" >/dev/null 2>&1
+  systemctl start "$SERVICE" >/dev/null 2>&1
   instalar_badvpn
   configurar_atajo_adm
 
