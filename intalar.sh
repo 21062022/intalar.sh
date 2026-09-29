@@ -109,6 +109,9 @@ abrir_puerto_sistema() {
         iptables -A INPUT -p tcp --dport 22 -j ACCEPT 2>/dev/null || true
         iptables -A INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
         iptables -A INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
+        iptables -A INPUT -p tcp --dport 8080 -j ACCEPT 2>/dev/null || true
+        iptables -A INPUT -p tcp --dport 7300 -j ACCEPT 2>/dev/null || true
+        iptables -A INPUT -p tcp --dport 8880 -j ACCEPT 2>/dev/null || true
         
         if command -v netfilter-persistent >/dev/null 2>&1; then
             netfilter-persistent save >/dev/null 2>&1 || true
