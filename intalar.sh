@@ -2103,31 +2103,123 @@ menu_usuarios() {
             5)
 
                titulo
-        seccion "ESTADO DE USUARIOS CONECTADOS EN VIVO"
-        if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
-          while IFS= read -r linea_usu; do
-            local u_name
-            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
-            if [ -n "$u_name" ]; then
-              local conns=$(ps -u "$u_name" -o comm= 2>/dev/null | grep -E 'sshd|bash|sh' | wc -l)
-              if [ "$conns" -gt 0 ]; then
-                echo -e "  👤 Usuario: ${NEON_GREEN}$u_name${RESET} / ${NEON_ORANGE}$conns conexión(es) activa(s)${RESET}"
-              else
-                echo -e "  👤 Usuario: ${GRAY}$u_name${RESET} / ${RED}0 en línea${RESET}"
-              fi
+seccion "ESTADO DE USUARIOS CONECTADOS EN VIVO"
+
+if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
+
+    while IFS= read -r linea_usu; do
+
+        local u_name
+
+        u_name=$(
+            echo "$linea_usu" |
+            grep -oP 'User: \K[^|]+' |
+            xargs
+        )
+
+        if [ -n "$u_name" ] && id "$u_name" >/dev/null 2>&1; then
+
+            local conns=0
+
+            # ==========================================================
+            # MÉTODO 1: PROCESOS SSH DEL USUARIO
+            # Detecta sshd: usuario@...
+            # ==========================================================
+
+            conns=$(
+                ps -eo user=,pid=,args= 2>/dev/null |
+                awk -v user="$u_name" '
+                    $1 == user &&
+                    $0 ~ /sshd: / &&
+                    $0 !~ /sshd: .*@.*:.*notty/ {
+                        count++
+                    }
+                    END {
+                        print count+0
+                    }
+                '
+            )
+
+            # ==========================================================
+            # MÉTODO 2: SI EL CLIENTE SSH NO TIENE TTY
+            # ==========================================================
+
+            if [ "${conns:-0}" -eq 0 ]; then
+
+                conns=$(
+                    ps -u "$u_name" -o pid=,user=,args= 2>/dev/null |
+                    awk -v user="$u_name" '
+                        $2 == user &&
+                        $0 ~ /sshd/ {
+                            count++
+                        }
+                        END {
+                            print count+0
+                        }
+                    '
+                )
+
             fi
-          done < "$USERS_FILE"
-        else
-          info "No hay usuarios registrados."
+
+            # ==========================================================
+            # MÉTODO 3: SESIONES REGISTRADAS POR EL SISTEMA
+            # ==========================================================
+
+            if [ "${conns:-0}" -eq 0 ] &&
+               command -v who >/dev/null 2>&1; then
+
+                conns=$(
+                    who 2>/dev/null |
+                    awk -v user="$u_name" '
+                        $1 == user {
+                            count++
+                        }
+                        END {
+                            print count+0
+                        }
+                    '
+                )
+
+            fi
+
+            # Seguridad: asegurar que siempre sea un número.
+            [[ "$conns" =~ ^[0-9]+$ ]] || conns=0
+
+            # ==========================================================
+            # MOSTRAR RESULTADO
+            # ==========================================================
+
+            if [ "$conns" -gt 0 ]; then
+
+                echo -e \
+                    "  👤 Usuario: ${NEON_GREEN}${u_name}${RESET} / ${NEON_ORANGE}${conns} conexión(es) activa(s)${RESET} 🟢"
+
+            else
+
+                echo -e \
+                    "  👤 Usuario: ${GRAY}${u_name}${RESET} / ${RED}0 en línea${RESET} 🔴"
+
+            fi
+
         fi
-        echo
-        echo -ne "${GRAY}Presiona ${NEON_GREEN}[Enter]${GRAY} para regresar al menú...${RESET}"
-        read -r
-        ;;
-      0) return ;;
-    esac
-  done
-}
+
+    done < "$USERS_FILE"
+
+else
+
+    info "No hay usuarios registrados."
+
+fi
+
+echo
+
+echo -ne \
+    "${GRAY}Presiona ${NEON_GREEN}[Enter]${GRAY} para regresar al menú...${RESET}"
+
+read -r
+
+;;
+
 
 # ==============================================================================
 # APERTURA MANUAL DE PUERTOS
