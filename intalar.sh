@@ -2100,175 +2100,135 @@ menu_usuarios() {
                 pausa
                 ;;
 
-            5)
+                        5)
+                titulo
+                seccion "ESTADO DE USUARIOS CONECTADOS EN VIVO"
 
-               titulo
-seccion "ESTADO DE USUARIOS CONECTADOS EN VIVO"
+                if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
 
-if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
+                    while IFS= read -r linea_usu; do
 
-    while IFS= read -r linea_usu; do
+                        u_name=$(
+                            echo "$linea_usu" |
+                            grep -oP 'User: \K[^|]+' |
+                            xargs
+                        )
 
-        local u_name
+                        [ -z "$u_name" ] && continue
 
-        u_name=$(
-            echo "$linea_usu" |
-            grep -oP 'User: \K[^|]+' |
-            xargs
-        )
+                        if ! id "$u_name" >/dev/null 2>&1; then
+                            continue
+                        fi
 
-        if [ -n "$u_name" ] && id "$u_name" >/dev/null 2>&1; then
+                        conns=0
 
-            local conns=0
+                        # ==================================================
+                        # MÉTODO 1: LOGINCTL
+                        # Cuenta sesiones PAM/SSH registradas por systemd
+                        # ==================================================
 
-            # ==========================================================
-            # MÉTODO 1: PROCESOS SSH DEL USUARIO
-            # Detecta sshd: usuario@...
-            # ==========================================================
+                        if command -v loginctl >/dev/null 2>&1; then
 
-            conns=$(
-                ps -eo user=,pid=,args= 2>/dev/null |
-                awk -v user="$u_name" '
-                    $1 == user &&
-                    $0 ~ /sshd: / &&
-                    $0 !~ /sshd: .*@.*:.*notty/ {
-                        count++
-                    }
-                    END {
-                        print count+0
-                    }
-                '
-            )
+                            conns=$(
+                                loginctl list-sessions --no-legend 2>/dev/null |
+                                awk -v user="$u_name" '$3 == user {count++}
+                                END {print count+0}'
+                            )
 
-            # ==========================================================
-            # MÉTODO 2: SI EL CLIENTE SSH NO TIENE TTY
-            # ==========================================================
+                        fi
 
-            if [ "${conns:-0}" -eq 0 ]; then
+                        # ==================================================
+                        # MÉTODO 2: PROCESOS SSHD DEL USUARIO
+                        # Busca específicamente sshd: usuario@...
+                        # ==================================================
 
-                conns=$(
-                    ps -u "$u_name" -o pid=,user=,args= 2>/dev/null |
-                    awk -v user="$u_name" '
-                        $2 == user &&
-                        $0 ~ /sshd/ {
-                            count++
-                        }
-                        END {
-                            print count+0
-                        }
-                    '
-                )
+                        if [ "${conns:-0}" -eq 0 ]; then
 
-            fi
+                            conns=$(
+                                ps -eo user=,pid=,args= 2>/dev/null |
+                                awk -v user="$u_name" '
+                                    $1 == user &&
+                                    $0 ~ /sshd:/ &&
+                                    $0 ~ /@/ {
+                                        count++
+                                    }
+                                    END {
+                                        print count+0
+                                    }
+                                '
+                            )
 
-            # ==========================================================
-            # MÉTODO 3: SESIONES REGISTRADAS POR EL SISTEMA
-            # ==========================================================
+                        fi
 
-            if [ "${conns:-0}" -eq 0 ] &&
-               command -v who >/dev/null 2>&1; then
+                        # ==================================================
+                        # MÉTODO 3: Pgrep
+                        # ==================================================
 
-                conns=$(
-                    who 2>/dev/null |
-                    awk -v user="$u_name" '
-                        $1 == user {
-                            count++
-                        }
-                        END {
-                            print count+0
-                        }
-                    '
-                )
+                        if [ "${conns:-0}" -eq 0 ]; then
 
-            fi
+                            conns=$(
+                                pgrep -u "$u_name" -af 'sshd' 2>/dev/null |
+                                grep -E 'sshd:.*@' |
+                                wc -l
+                            )
 
-            # Seguridad: asegurar que siempre sea un número.
-            [[ "$conns" =~ ^[0-9]+$ ]] || conns=0
+                        fi
 
-            # ==========================================================
-            # MOSTRAR RESULTADO
-            # ==========================================================
+                        # ==================================================
+                        # MÉTODO 4: WHO
+                        # ==================================================
 
-            if [ "$conns" -gt 0 ]; then
+                        if [ "${conns:-0}" -eq 0 ] &&
+                           command -v who >/dev/null 2>&1; then
 
-                echo -e \
-                    "  👤 Usuario: ${NEON_GREEN}${u_name}${RESET} / ${NEON_ORANGE}${conns} conexión(es) activa(s)${RESET} 🟢"
+                            conns=$(
+                                who 2>/dev/null |
+                                awk -v user="$u_name" '
+                                    $1 == user {
+                                        count++
+                                    }
+                                    END {
+                                        print count+0
+                                    }
+                                '
+                            )
 
-            else
+                        fi
 
-                echo -e \
-                    "  👤 Usuario: ${GRAY}${u_name}${RESET} / ${RED}0 en línea${RESET} 🔴"
+                        # Seguridad
+                        [[ "$conns" =~ ^[0-9]+$ ]] || conns=0
 
-            fi
+                        # ==================================================
+                        # RESULTADO
+                        # ==================================================
 
-        fi
+                        if [ "$conns" -gt 0 ]; then
 
-    done < "$USERS_FILE"
+                            echo -e \
+                                "  👤 Usuario: ${NEON_GREEN}${u_name}${RESET} / ${NEON_ORANGE}${conns} conexión(es) activa(s)${RESET} 🟢"
 
-else
+                        else
 
-    info "No hay usuarios registrados."
+                            echo -e \
+                                "  👤 Usuario: ${GRAY}${u_name}${RESET} / ${RED}0 en línea${RESET} 🔴"
 
-fi
+                        fi
 
-echo
+                    done < "$USERS_FILE"
 
-echo -ne \
-    "${GRAY}Presiona ${NEON_GREEN}[Enter]${GRAY} para regresar al menú...${RESET}"
+                else
 
-read -r
+                    info "No hay usuarios registrados."
 
-;;
+                fi
 
+                echo
 
-# ==============================================================================
-# APERTURA MANUAL DE PUERTOS
-# ==============================================================================
-menu_activar_puertos() {
+                echo -ne \
+                    "${GRAY}Presiona ${NEON_GREEN}[Enter]${GRAY} para regresar al menú...${RESET}"
 
-    while true; do
-
-        titulo
-
-        seccion "ACTIVADOR Y APERTURA MANUAL DE PUERTOS (FIREWALL)"
-
-        echo -e \
-            "  ${WHITE}Abre cualquier puerto TCP adicional (ej. 443, 80, 8989, 8880, etc.)${RESET}"
-
-        linea
-
-        echo -ne \
-            " ${NEON_ORANGE}◆${RESET} Ingresa el número de puerto a abrir (Ej. 443): "
-
-        read -r p_ingresado
-
-        if [[ "$p_ingresado" =~ ^[0-9]+$ ]] &&
-           [ "$p_ingresado" -gt 0 ] &&
-           [ "$p_ingresado" -le 65535 ]; then
-
-            abrir_puerto_sistema \
-                "$p_ingresado"
-
-            ok \
-                "¡El puerto $p_ingresado ya está abierto y aceptando tráfico!"
-
-        else
-
-            fail "Número de puerto inválido."
-
-        fi
-
-        echo
-
-        echo -ne \
-            " ${SKY}◆${RESET} ¿Deseas abrir otro puerto? (s/n): "
-
-        read -r otro
-
-        [[ "$otro" =~ ^[sS]$ ]] || break
-
-    done
-}
+                read -r
+                ;;
 
 # ==============================================================================
 # BADVPN
