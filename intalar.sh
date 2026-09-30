@@ -2102,72 +2102,31 @@ menu_usuarios() {
 
             5)
 
-                titulo
-
-                seccion "ESTADO DE USUARIOS CONECTADOS EN VIVO"
-
-                if [ -f "$USERS_FILE" ] &&
-                   [ -s "$USERS_FILE" ]; then
-
-                    while IFS= read -r linea_usu; do
-
-                        local u_name
-
-                        u_name=$(
-                            echo "$linea_usu" |
-                            grep -oP 'User: \K[^|]+' |
-                            xargs
-                        )
-
-                        if [ -n "$u_name" ]; then
-
-                            local conns
-
-                            conns=$(
-                                ps -u "$u_name" -o comm= 2>/dev/null |
-                                grep -E 'sshd|bash|sh' |
-                                wc -l
-                            )
-
-                            if [ "$conns" -gt 0 ]; then
-
-                                echo -e \
-                                    "  👤 Usuario: ${NEON_GREEN}$u_name${RESET} / ${NEON_ORANGE}$conns conexión(es) activa(s)${RESET}"
-
-                            else
-
-                                echo -e \
-                                    "  👤 Usuario: ${GRAY}$u_name${RESET} / ${RED}0 en línea${RESET}"
-
-                            fi
-
-                        fi
-
-                    done < "$USERS_FILE"
-
-                else
-
-                    info "No hay usuarios registrados."
-
-                fi
-
-                echo
-
-                echo -ne \
-                    "${GRAY}Presiona ${NEON_GREEN}[Enter]${GRAY} para regresar al menú...${RESET}"
-
-                read -r
-
-                ;;
-
-            0)
-
-                return
-                ;;
-
-        esac
-
-    done
+               titulo
+        seccion "ESTADO DE USUARIOS CONECTADOS EN VIVO"
+        if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
+          while IFS= read -r linea_usu; do
+            local u_name
+            u_name=$(echo "$linea_usu" | grep -oP 'User: \K[^|]+' | xargs)
+            if [ -n "$u_name" ]; then
+              local conns=$(ps -u "$u_name" -o comm= 2>/dev/null | grep -E 'sshd|bash|sh' | wc -l)
+              if [ "$conns" -gt 0 ]; then
+                echo -e "  👤 Usuario: ${NEON_GREEN}$u_name${RESET} / ${NEON_ORANGE}$conns conexión(es) activa(s)${RESET}"
+              else
+                echo -e "  👤 Usuario: ${GRAY}$u_name${RESET} / ${RED}0 en línea${RESET}"
+              fi
+            fi
+          done < "$USERS_FILE"
+        else
+          info "No hay usuarios registrados."
+        fi
+        echo
+        echo -ne "${GRAY}Presiona ${NEON_GREEN}[Enter]${GRAY} para regresar al menú...${RESET}"
+        read -r
+        ;;
+      0) return ;;
+    esac
+  done
 }
 
 # ==============================================================================
