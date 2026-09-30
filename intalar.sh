@@ -240,6 +240,7 @@ SESSION_IDLE_TIMEOUT=90.0
 SESSION_MAX_AGE=21600.0
 CLEANUP_INTERVAL=15.0
 LONGPOLL=2.0
+FRONTEND_GRACE=1.0
 MAX_DOWN_BUFFER=8*1024*1024
 MAX_DOWN_CHUNKS=2048
 MAX_PAYLOAD=1024*1024
@@ -271,6 +272,13 @@ class Session:
         self.br=None; self.bw=None; self.reader_task=None
         now=time.monotonic(); self.created_at=now; self.last_activity=now
         self.write_lock=asyncio.Lock()
+        # Conexiones BHTTP (frontend) actualmente asociadas a esta sesión.
+        # Cuando llega a cero, cerramos el backend SSH tras una pequeña
+        # ventana de gracia para detectar la desconexión rápidamente sin
+        # romper una reconexión inmediata con el mismo ID de sesión.
+        self.frontend_count=0
+        self.frontend_lock=asyncio.Lock()
+        self.frontend_close_task=None
     def touch(self): self.last_activity=time.monotonic()
     def idle_for(self): return time.monotonic()-self.last_activity
     def age(self): return time.monotonic()-self.created_at
@@ -348,6 +356,47 @@ class Session:
         self.touch()
         async with self.cond:
             for k in [k for k in self.down_chunks if k<=seq]: del self.down_chunks[k]
+    async def attach_frontend(self):
+        async with self.frontend_lock:
+            if self.frontend_close_task is not None:
+                task=self.frontend_close_task
+                self.frontend_close_task=None
+                if not task.done():
+                    task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    pass
+            self.frontend_count += 1
+
+    async def detach_frontend(self):
+        async with self.frontend_lock:
+            if self.frontend_count > 0:
+                self.frontend_count -= 1
+
+            if self.frontend_count == 0 and not self.closed:
+                # Cierre rápido del backend tras la desconexión del cliente.
+                # La gracia de 1 segundo permite una reconexión inmediata.
+                if self.frontend_close_task is None or self.frontend_close_task.done():
+                    self.frontend_close_task=asyncio.create_task(
+                        self._close_if_no_frontend(),
+                        name="bhttp-frontend-grace-close"
+                    )
+
+    async def _close_if_no_frontend(self):
+        try:
+            await asyncio.sleep(FRONTEND_GRACE)
+            async with self.frontend_lock:
+                if self.frontend_count != 0 or self.closed:
+                    return
+            await self.close()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
+
     async def _close_backend(self):
         writer=self.bw; self.bw=None; self.br=None
         if writer:
@@ -355,6 +404,17 @@ class Session:
             except Exception: pass
     async def close(self):
         self.closed=True
+
+        close_task=self.frontend_close_task
+        self.frontend_close_task=None
+        if close_task is not None and close_task is not asyncio.current_task() and not close_task.done():
+            close_task.cancel()
+            try:
+                await close_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
         async with self.cond:
             self.eof=True; self.down_raw.clear(); self.down_chunks.clear(); self.up_pending.clear(); self.cond.notify_all()
         task=self.reader_task
@@ -398,6 +458,8 @@ class Server:
         body=len(data).to_bytes(4,"big")+masked
         writer.write(bytes([2])+len(body).to_bytes(4,"big")+body)
     async def handle(self,reader,writer):
+        s=None
+        attached_session=None
         try:
             while not self.stopping:
                 try: hdr=await self._read_exactly(reader,HEADER_SIZE)
@@ -418,6 +480,14 @@ class Server:
                     writer.write(bytes([0])+len(body).to_bytes(4,"big")+body); await self._safe_drain(writer); continue
                 s=await self.get_session(sess)
                 if not s: break
+                if attached_session is not s:
+                    if attached_session is not None:
+                        try:
+                            await attached_session.detach_frontend()
+                        except Exception:
+                            pass
+                    await s.attach_frontend()
+                    attached_session=s
                 s.touch()
                 if mode==1:
                     if not await s.upload(seq,payload): break
@@ -441,6 +511,14 @@ class Server:
         except asyncio.CancelledError: raise
         except Exception: pass
         finally:
+            # Desasocia la conexión BHTTP actual. Si ya no quedan
+            # conexiones frontend, la sesión SSH backend se cierra
+            # rápidamente; esto hace que el monitor vea la desconexión.
+            try:
+                if attached_session is not None:
+                    await attached_session.detach_frontend()
+            except Exception:
+                pass
             try:
                 writer.close()
                 try: await asyncio.wait_for(writer.wait_closed(),timeout=3)
@@ -794,13 +872,13 @@ menu_usuarios(){
           fi
 
           echo
-          echo -e "  ${GRAY}Actualización automática cada 2 segundos.
+          echo -e "  ${GRAY}Actualización automática cada 1 segundo.
   DETECCIÓN: SSH directo + sesiones SSH transportadas por BHTTP.${RESET}"
-          echo -e "  ${GRAY}Una desconexión se reflejará en un máximo aproximado de 2 segundos.${RESET}"
+          echo -e "  ${GRAY}Una desconexión se reflejará normalmente en 1–2 segundos.${RESET}"
           echo -e "  ${GRAY}Presiona Enter para regresar al menú.${RESET}"
 
-          # Espera hasta 2 segundos. Enter sale; si no, vuelve a medir.
-          if IFS= read -r -t 2; then
+          # Espera 1 segundo. Enter sale; si no, vuelve a medir.
+          if IFS= read -r -t 1; then
             break
           fi
         done
