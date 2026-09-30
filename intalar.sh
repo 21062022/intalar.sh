@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # HAZAEL MORENO MULTI SCRIPT - BHTTP & BADVPN
-# Versión corregida
+# Versión corregida • MONITOR EN LÍNEA 2s • ROOT EXCLUIDO
 # ==============================================================================
 
 set -o pipefail
@@ -21,6 +21,7 @@ SERVICE="bhttp"; BADVPN_SERVICE="badvpn"
 CONFIG_DIR="/etc/bhttp"
 CONFIG="$CONFIG_DIR/nullcore.conf"
 USERS_FILE="$CONFIG_DIR/cuentas.txt"
+IP_CACHE_FILE="$CONFIG_DIR/public_ip.cache"
 SCRIPT_PATH="/usr/local/bin/intalar.sh"
 ADM_BIN="/usr/local/bin/adm"
 ADMIN_BIN="/usr/local/bin/admin"
@@ -45,11 +46,27 @@ check_root(){
 
 obtener_ip_publica(){
   local ip_pub=""
-  if command -v curl >/dev/null 2>&1; then
-    ip_pub="$(curl -4fsS --max-time 3 https://api.ipify.org 2>/dev/null || true)"
+
+  # Usar caché si existe y es reciente para no bloquear el panel.
+  if [ -s "$IP_CACHE_FILE" ]; then
+    local ahora mtime
+    ahora="$(date +%s 2>/dev/null || echo 0)"
+    mtime="$(stat -c %Y "$IP_CACHE_FILE" 2>/dev/null || echo 0)"
+    if [ "$mtime" -gt 0 ] && [ $((ahora-mtime)) -lt 3600 ]; then
+      cat "$IP_CACHE_FILE"
+      return 0
+    fi
   fi
+
+  if command -v curl >/dev/null 2>&1; then
+    ip_pub="$(curl -4fsS --max-time 1 https://api.ipify.org 2>/dev/null || true)"
+  fi
+
   [ -z "$ip_pub" ] && ip_pub="$(hostname -I 2>/dev/null | awk '{print $1}')"
   [ -z "$ip_pub" ] && ip_pub="127.0.0.1"
+
+  mkdir -p "$CONFIG_DIR" 2>/dev/null || true
+  printf '%s\n' "$ip_pub" > "$IP_CACHE_FILE" 2>/dev/null || true
   echo "$ip_pub"
 }
 
@@ -64,6 +81,25 @@ titulo(){
   echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
   echo
 }
+titulo_rapido(){
+  clear_screen
+  local ip_maquina=""
+
+  if [ -s "$IP_CACHE_FILE" ]; then
+    ip_maquina="$(head -n1 "$IP_CACHE_FILE" 2>/dev/null)"
+  fi
+
+  [ -z "$ip_maquina" ] && ip_maquina="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  [ -z "$ip_maquina" ] && ip_maquina="127.0.0.1"
+
+  echo -e "${NEON_PINK}╔══════════════════════════════════════════════════════════════════╗${RESET}"
+  echo -e "${NEON_PINK}║${RESET} ${NEON_GREEN}${BOLD}                   HAZAEL MORENO MULTI SCRIPT${RESET}              ${NEON_PINK}║${RESET}"
+  echo -e "${NEON_PINK}║${RESET} ${NEON_BLUE}${BOLD}              BHTTP V.1 & BADVPN PROTOCOL v8.0${RESET}             ${NEON_PINK}║${RESET}"
+  echo -e "${NEON_PINK}╚══════════════════════════════════════════════════════════════════╝${RESET}"
+  echo -e "${SKY}     🚀 ${NEON_ORANGE}TIGO Y CLARO NICARAGUA${RESET} ${SKY}• IP: ${YELLOW}${BOLD}$ip_maquina${RESET} 🚀${RESET}"
+  echo
+}
+
 seccion(){
   echo
   echo -e "${MAGENTA}┌──────────────────────────────────────────────────────────────────┐${RESET}"
@@ -494,103 +530,42 @@ extraer_usuario(){
   echo "$1" | grep -oP 'User: \K[^|]+' | xargs
 }
 
-# Devuelve los usuarios que el panel debe mostrar.
-# Usa cuentas.txt cuando existe y, como respaldo, descubre usuarios
-# de sesiones SSH activas para que el panel no quede vacío si el archivo
-# de registro se perdió o quedó vacío.
+# ------------------------------------------------------------------------------
+# USUARIOS DEL PANEL
+# Solo muestra las cuentas creadas/registradas desde este panel.
+# No incluye root, usuarios del sistema ni sesiones ajenas al panel.
+# ------------------------------------------------------------------------------
 obtener_usuarios_panel(){
-  local u
-  local encontrados=0
+  local linea_usu u
 
-  # 1) Fuente principal: usuarios creados desde el panel.
-  if [ -s "$USERS_FILE" ]; then
-    while IFS= read -r linea_usu; do
-      u="$(extraer_usuario "$linea_usu")"
-      if [ -n "$u" ] && id "$u" >/dev/null 2>&1; then
-        echo "$u"
-        encontrados=1
-      fi
-    done < "$USERS_FILE"
-  fi
+  [ -s "$USERS_FILE" ] || return 0
 
-  # 2) Respaldo: usuarios que realmente tienen una sesión SSH activa.
-  ps -eo user=,args= 2>/dev/null | awk '
-    $0 ~ /sshd:/ && $0 ~ /@/ { print $1 }
-  '
+  while IFS= read -r linea_usu; do
+    u="$(extraer_usuario "$linea_usu")"
 
-  # 3) Respaldo adicional: sesiones registradas por logind/PAM.
-  if command -v loginctl >/dev/null 2>&1; then
-    loginctl list-sessions --no-legend 2>/dev/null | awk '
-      NF >= 3 { print $3 }
-    '
-  fi
+    [ -z "$u" ] && continue
+    [ "$u" = "root" ] && continue
 
-  # 4) Último respaldo si cuentas.txt quedó vacío: usuarios humanos
-  # con shell de inicio de sesión. Esto evita que el panel quede vacío.
-  if [ "$encontrados" -eq 0 ] && command -v getent >/dev/null 2>&1; then
-    getent passwd 2>/dev/null | awk -F: '
-      $3 >= 1000 && $7 !~ /(nologin|false)$/ { print $1 }
-    '
-  fi
+    echo "$u"
+  done < "$USERS_FILE"
 }
 
-usuario_conexiones(){
-  local u="$1" conns=0 n=0 pid owner
-
-  # 1) ss: detecta conexiones TCP ESTABLISHED hacia el puerto SSH y
-  # relaciona el PID del sshd con el usuario real del proceso.
-  if command -v ss >/dev/null 2>&1; then
-    while IFS= read -r pid; do
-      [ -z "$pid" ] && continue
-      owner="$(ps -o user= -p "$pid" 2>/dev/null | xargs)"
-      [ "$owner" = "$u" ] && conns=$((conns + 1))
-    done < <(
-      ss -Htnp state established 2>/dev/null |
-      awk -v p="$SSHPORT" '
-        ($4 ~ (":" p "$") || $5 ~ (":" p "$") ) {
-          while (match($0,/pid=[0-9]+/)) {
-            print substr($0,RSTART+4,RLENGTH-4)
-            $0=substr($0,RSTART+RLENGTH)
-          }
-        }
-      '
-    )
-  fi
-
-  # 2) Procesos sshd del propio usuario. Incluye @notty, que es habitual
-  # con clientes SSH sin terminal.
-  if [ "$conns" -eq 0 ]; then
-    conns="$(
-      ps -eo user=,args= 2>/dev/null |
-      awk -v u="$u" '
-        $1 == u && $0 ~ /sshd:/ && $0 ~ /@/ { c++ }
-        END { print c+0 }
-      '
-    )"
-  fi
-
-  # 3) pgrep como respaldo adicional.
-  if [ "${conns:-0}" -eq 0 ] && command -v pgrep >/dev/null 2>&1; then
-    n="$(pgrep -u "$u" -af 'sshd:' 2>/dev/null | wc -l)"
-    case "$n" in ''|*[!0-9]*) n=0 ;; esac
-    conns="$n"
-  fi
-
-  # 4) loginctl/PAM.
-  if [ "${conns:-0}" -eq 0 ] && command -v loginctl >/dev/null 2>&1; then
-    conns="$(
-      loginctl list-sessions --no-legend 2>/dev/null |
-      awk -v u="$u" '$3 == u { c++ } END { print c+0 }'
-    )"
-  fi
-
-  # 5) who: último respaldo para sesiones con TTY.
-  if [ "${conns:-0}" -eq 0 ] && command -v who >/dev/null 2>&1; then
-    conns="$(who 2>/dev/null | awk -v u="$u" '$1 == u { c++ } END { print c+0 }')"
-  fi
-
-  [[ "$conns" =~ ^[0-9]+$ ]] || conns=0
-  echo "$conns"
+# ------------------------------------------------------------------------------
+# FOTOGRAFÍA RÁPIDA DE SESIONES SSH
+# Una sola lectura de procesos por actualización.
+# Así evitamos hacer comandos por separado para cada usuario y la pantalla
+# responde rápidamente incluso con bastantes cuentas.
+# ------------------------------------------------------------------------------
+obtener_conexiones_ssh(){
+  ps -eo user=,args= 2>/dev/null |
+    awk '
+      $1 != "root" && $0 ~ /sshd: [^ ]+@/ {
+        conteo[$1]++
+      }
+      END {
+        for (u in conteo) print u, conteo[u]
+      }
+    '
 }
 
 menu_usuarios(){
@@ -675,26 +650,50 @@ menu_usuarios(){
         else info "No hay usuarios."; fi
         pausa ;;
       5)
-        titulo; seccion "ESTADO DE USUARIOS CONECTADOS EN VIVO"
+        # ------------------------------------------------------------------
+        # MONITOR EN VIVO
+        # Actualiza cada 2 segundos. Solo considera usuarios registrados
+        # en cuentas.txt y excluye root explícitamente.
+        # ------------------------------------------------------------------
+        while true; do
+          clear_screen
+          titulo_rapido
+          seccion "ESTADO DE USUARIOS CONECTADOS EN VIVO"
 
-        mapfile -t usuarios_panel < <(obtener_usuarios_panel | sed '/^[[:space:]]*$/d' | sort -u)
+          mapfile -t usuarios_panel < <(obtener_usuarios_panel | sort -u)
 
-        if [ "${#usuarios_panel[@]}" -eq 0 ]; then
-          info "No se encontraron usuarios administrados ni sesiones SSH activas."
-        else
-          for u_name in "${usuarios_panel[@]}"; do
-            id "$u_name" >/dev/null 2>&1 || continue
-            conns="$(usuario_conexiones "$u_name")"
-            if [ "$conns" -gt 0 ]; then
-              echo -e "  👤 Usuario: ${NEON_GREEN}${u_name}${RESET} / ${NEON_ORANGE}${conns} conexión(es) activa(s)${RESET} 🟢"
-            else
-              echo -e "  👤 Usuario: ${GRAY}${u_name}${RESET} / ${RED}0 en línea${RESET} 🔴"
-            fi
-          done
-        fi
+          if [ "${#usuarios_panel[@]}" -eq 0 ]; then
+            info "No hay usuarios registrados en el panel."
+          else
+            declare -A conexiones=()
 
-        echo
-        read -r -p "$(echo -e "${GRAY}Presiona ${NEON_GREEN}[Enter]${GRAY} para regresar al menú...${RESET}")"
+            while read -r usuario cantidad; do
+              [ -z "$usuario" ] && continue
+              [[ "$cantidad" =~ ^[0-9]+$ ]] || continue
+              conexiones["$usuario"]="$cantidad"
+            done < <(obtener_conexiones_ssh)
+
+            for u_name in "${usuarios_panel[@]}"; do
+              conns="${conexiones[$u_name]:-0}"
+
+              if [ "$conns" -gt 0 ]; then
+                echo -e "  👤 Usuario: ${NEON_GREEN}${u_name}${RESET} / ${NEON_ORANGE}${conns} conexión(es) activa(s)${RESET} 🟢"
+              else
+                echo -e "  👤 Usuario: ${GRAY}${u_name}${RESET} / ${RED}0 en línea${RESET} 🔴"
+              fi
+            done
+          fi
+
+          echo
+          echo -e "  ${GRAY}Actualización automática cada 2 segundos.${RESET}"
+          echo -e "  ${GRAY}Una desconexión se reflejará en un máximo aproximado de 2 segundos.${RESET}"
+          echo -e "  ${GRAY}Presiona Enter para regresar al menú.${RESET}"
+
+          # Espera hasta 2 segundos. Enter sale; si no, vuelve a medir.
+          if IFS= read -r -t 2; then
+            break
+          fi
+        done
         ;;
       0) return ;;
       *) fail "Opción inválida."; pausa ;;
