@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # HAZAEL MORENO MULTI SCRIPT - BHTTP & BADVPN
-# Versión corregida • MONITOR EN LÍNEA 2s • ROOT EXCLUIDO
+# Versión PRO • MONITOR EN LÍNEA 2s • ROOT EXCLUIDO • SSH/BHTTP
 # ==============================================================================
 
 set -o pipefail
@@ -557,17 +557,124 @@ obtener_usuarios_panel(){
 # responde rápidamente incluso con bastantes cuentas.
 # ------------------------------------------------------------------------------
 obtener_conexiones_ssh(){
-  ps -eo user=,args= 2>/dev/null |
-    awk '
-      $1 != "root" && $0 ~ /sshd: [^ ]+@/ {
-        conteo[$1]++
-      }
-      END {
-        for (u in conteo) print u, conteo[u]
-      }
-    '
-}
+  # --------------------------------------------------------------------------
+  # DETECCIÓN PROFESIONAL DE SESIONES SSH EN TIEMPO REAL
+  #
+  # Objetivo:
+  #   1) Detectar tanto SSH directo como SSH transportado por BHTTP.
+  #   2) No mostrar root ni cuentas ajenas al panel.
+  #   3) No depender de TTY: funciona también con @notty.
+  #   4) Hacer una sola instantánea de procesos + una lectura de sockets.
+  #   5) Evitar falsos positivos de procesos normales del usuario.
+  # --------------------------------------------------------------------------
 
+  declare -A conteo=()
+  declare -A proc_user=()
+  declare -A proc_args=()
+  declare -A pids_vistos=()
+
+  local line pid owner args usuario
+  local ssh_port="${SSHPORT:-22}"
+  local proc_snapshot=""
+  local sockets=""
+
+  # --------------------------------------------------------------------------
+  # SNAPSHOT ÚNICO DE PROCESOS
+  # --------------------------------------------------------------------------
+  proc_snapshot="$(ps -eo pid=,user=,args= 2>/dev/null || true)"
+
+  while read -r pid owner args; do
+    [ -n "$pid" ] || continue
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
+    proc_user["$pid"]="$owner"
+    proc_args["$pid"]="$args"
+  done <<< "$proc_snapshot"
+
+  # --------------------------------------------------------------------------
+  # MÉTODO PRINCIPAL: SOCKETS ESTABLECIDOS DEL PUERTO SSH
+  # Esto permite detectar también sesiones BHTTP cuyo backend termina en SSH.
+  # --------------------------------------------------------------------------
+  if command -v ss >/dev/null 2>&1; then
+    sockets="$(ss -Hntp state established "sport = :$ssh_port" 2>/dev/null || true)"
+
+    # Algunos sistemas tienen una sintaxis de ss distinta. Fallback seguro.
+    if [ -z "$sockets" ]; then
+      sockets="$(ss -Hntp 2>/dev/null | awk -v p=":$ssh_port" '$4 ~ p {print}' || true)"
+    fi
+
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+
+      # Un socket normalmente referencia un PID en users:(...pid=123...).
+      while read -r pid; do
+        [ -n "$pid" ] || continue
+        [[ "$pid" =~ ^[0-9]+$ ]] || continue
+        [ -n "${pids_vistos[$pid]:-}" ] && continue
+        pids_vistos["$pid"]=1
+
+        owner="${proc_user[$pid]:-}"
+        args="${proc_args[$pid]:-}"
+        usuario=""
+
+        # OpenSSH normalmente usa: sshd: usuario@...
+        if [[ "$args" =~ sshd:[[:space:]]+([^[:space:]@]+)@ ]]; then
+          usuario="${BASH_REMATCH[1]}"
+        # Dropbear puede aparecer como dropbear ... usuario@...
+        elif [[ "$args" == *dropbear* ]]; then
+          if [[ "$args" =~ ([[:alnum:]_.-]+)@ ]]; then
+            usuario="${BASH_REMATCH[1]}"
+          elif [ -n "$owner" ] && [ "$owner" != "root" ] && [ "$owner" != "sshd" ]; then
+            usuario="$owner"
+          fi
+        # Si el socket pertenece a un proceso sshd/dropbear del usuario.
+        elif [ -n "$owner" ] && [ "$owner" != "root" ] && [ "$owner" != "sshd" ] &&
+             ( [[ "$args" == *sshd* ]] || [[ "$args" == *dropbear* ]] ); then
+          usuario="$owner"
+        fi
+
+        # Validación final: jamás contar root ni nombres extraños.
+        if [ -n "$usuario" ] && [ "$usuario" != "root" ] &&
+           [[ "$usuario" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          conteo["$usuario"]=$(( ${conteo[$usuario]:-0} + 1 ))
+        fi
+      done < <(printf '%s\n' "$line" | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u)
+    done <<< "$sockets"
+  fi
+
+  # --------------------------------------------------------------------------
+  # FALLBACK: TABLA DE PROCESOS
+  # Sirve en equipos donde ss no muestra PID o el proceso tiene otra forma.
+  # --------------------------------------------------------------------------
+  while read -r pid owner args; do
+    [ -n "$pid" ] || continue
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
+    [ -n "${pids_vistos[$pid]:-}" ] && continue
+
+    usuario=""
+
+    if [[ "$args" =~ sshd:[[:space:]]+([^[:space:]@]+)@ ]]; then
+      usuario="${BASH_REMATCH[1]}"
+    elif [[ "$args" == *dropbear* ]]; then
+      if [[ "$args" =~ ([[:alnum:]_.-]+)@ ]]; then
+        usuario="${BASH_REMATCH[1]}"
+      elif [ -n "$owner" ] && [ "$owner" != "root" ] && [ "$owner" != "sshd" ]; then
+        usuario="$owner"
+      fi
+    fi
+
+    if [ -n "$usuario" ] && [ "$usuario" != "root" ] &&
+       [[ "$usuario" =~ ^[A-Za-z0-9._-]+$ ]]; then
+      conteo["$usuario"]=$(( ${conteo[$usuario]:-0} + 1 ))
+    fi
+  done <<< "$proc_snapshot"
+
+  # --------------------------------------------------------------------------
+  # SALIDA ORDENADA PARA EL PANEL
+  # --------------------------------------------------------------------------
+  for usuario in "${!conteo[@]}"; do
+    printf '%s %s\n' "$usuario" "${conteo[$usuario]}"
+  done | sort
+}
 menu_usuarios(){
   while true; do
     titulo; seccion "GESTIÓN DE USUARIOS Y CREDENCIALES"
@@ -667,6 +774,8 @@ menu_usuarios(){
           else
             declare -A conexiones=()
 
+            # Una fotografía nueva en cada ciclo: nunca conserva una conexión
+            # anterior después de que el usuario se haya desconectado.
             while read -r usuario cantidad; do
               [ -z "$usuario" ] && continue
               [[ "$cantidad" =~ ^[0-9]+$ ]] || continue
@@ -685,7 +794,8 @@ menu_usuarios(){
           fi
 
           echo
-          echo -e "  ${GRAY}Actualización automática cada 2 segundos.${RESET}"
+          echo -e "  ${GRAY}Actualización automática cada 2 segundos.
+  DETECCIÓN: SSH directo + sesiones SSH transportadas por BHTTP.${RESET}"
           echo -e "  ${GRAY}Una desconexión se reflejará en un máximo aproximado de 2 segundos.${RESET}"
           echo -e "  ${GRAY}Presiona Enter para regresar al menú.${RESET}"
 
