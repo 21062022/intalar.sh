@@ -494,20 +494,101 @@ extraer_usuario(){
   echo "$1" | grep -oP 'User: \K[^|]+' | xargs
 }
 
-usuario_conexiones(){
-  local u="$1" conns=0
+# Devuelve los usuarios que el panel debe mostrar.
+# Usa cuentas.txt cuando existe y, como respaldo, descubre usuarios
+# de sesiones SSH activas para que el panel no quede vacío si el archivo
+# de registro se perdió o quedó vacío.
+obtener_usuarios_panel(){
+  local u
+  local encontrados=0
+
+  # 1) Fuente principal: usuarios creados desde el panel.
+  if [ -s "$USERS_FILE" ]; then
+    while IFS= read -r linea_usu; do
+      u="$(extraer_usuario "$linea_usu")"
+      if [ -n "$u" ] && id "$u" >/dev/null 2>&1; then
+        echo "$u"
+        encontrados=1
+      fi
+    done < "$USERS_FILE"
+  fi
+
+  # 2) Respaldo: usuarios que realmente tienen una sesión SSH activa.
+  ps -eo user=,args= 2>/dev/null | awk '
+    $0 ~ /sshd:/ && $0 ~ /@/ { print $1 }
+  '
+
+  # 3) Respaldo adicional: sesiones registradas por logind/PAM.
   if command -v loginctl >/dev/null 2>&1; then
-    conns="$(loginctl list-sessions --no-legend 2>/dev/null | awk -v u="$u" '$3==u{c++} END{print c+0}')"
+    loginctl list-sessions --no-legend 2>/dev/null | awk '
+      NF >= 3 { print $3 }
+    '
   fi
-  if [ "${conns:-0}" -eq 0 ]; then
-    conns="$(ps -eo user=,pid=,args= 2>/dev/null | awk -v u="$u" '$1==u && $0~/sshd:/ && $0~/@/{c++} END{print c+0}')"
+
+  # 4) Último respaldo si cuentas.txt quedó vacío: usuarios humanos
+  # con shell de inicio de sesión. Esto evita que el panel quede vacío.
+  if [ "$encontrados" -eq 0 ] && command -v getent >/dev/null 2>&1; then
+    getent passwd 2>/dev/null | awk -F: '
+      $3 >= 1000 && $7 !~ /(nologin|false)$/ { print $1 }
+    '
   fi
+}
+
+usuario_conexiones(){
+  local u="$1" conns=0 n=0 pid owner
+
+  # 1) ss: detecta conexiones TCP ESTABLISHED hacia el puerto SSH y
+  # relaciona el PID del sshd con el usuario real del proceso.
+  if command -v ss >/dev/null 2>&1; then
+    while IFS= read -r pid; do
+      [ -z "$pid" ] && continue
+      owner="$(ps -o user= -p "$pid" 2>/dev/null | xargs)"
+      [ "$owner" = "$u" ] && conns=$((conns + 1))
+    done < <(
+      ss -Htnp state established 2>/dev/null |
+      awk -v p="$SSHPORT" '
+        ($4 ~ (":" p "$") || $5 ~ (":" p "$") ) {
+          while (match($0,/pid=[0-9]+/)) {
+            print substr($0,RSTART+4,RLENGTH-4)
+            $0=substr($0,RSTART+RLENGTH)
+          }
+        }
+      '
+    )
+  fi
+
+  # 2) Procesos sshd del propio usuario. Incluye @notty, que es habitual
+  # con clientes SSH sin terminal.
+  if [ "$conns" -eq 0 ]; then
+    conns="$(
+      ps -eo user=,args= 2>/dev/null |
+      awk -v u="$u" '
+        $1 == u && $0 ~ /sshd:/ && $0 ~ /@/ { c++ }
+        END { print c+0 }
+      '
+    )"
+  fi
+
+  # 3) pgrep como respaldo adicional.
   if [ "${conns:-0}" -eq 0 ] && command -v pgrep >/dev/null 2>&1; then
-    conns="$(pgrep -u "$u" -af 'sshd' 2>/dev/null | grep -E 'sshd:.*@' | wc -l)"
+    n="$(pgrep -u "$u" -af 'sshd:' 2>/dev/null | wc -l)"
+    case "$n" in ''|*[!0-9]*) n=0 ;; esac
+    conns="$n"
   fi
+
+  # 4) loginctl/PAM.
+  if [ "${conns:-0}" -eq 0 ] && command -v loginctl >/dev/null 2>&1; then
+    conns="$(
+      loginctl list-sessions --no-legend 2>/dev/null |
+      awk -v u="$u" '$3 == u { c++ } END { print c+0 }'
+    )"
+  fi
+
+  # 5) who: último respaldo para sesiones con TTY.
   if [ "${conns:-0}" -eq 0 ] && command -v who >/dev/null 2>&1; then
-    conns="$(who 2>/dev/null | awk -v u="$u" '$1==u{c++} END{print c+0}')"
+    conns="$(who 2>/dev/null | awk -v u="$u" '$1 == u { c++ } END { print c+0 }')"
   fi
+
   [[ "$conns" =~ ^[0-9]+$ ]] || conns=0
   echo "$conns"
 }
@@ -595,11 +676,13 @@ menu_usuarios(){
         pausa ;;
       5)
         titulo; seccion "ESTADO DE USUARIOS CONECTADOS EN VIVO"
-        if [ -s "$USERS_FILE" ]; then
-          local linea_usu u_name conns
-          while IFS= read -r linea_usu; do
-            u_name="$(extraer_usuario "$linea_usu")"
-            [ -z "$u_name" ] && continue
+
+        mapfile -t usuarios_panel < <(obtener_usuarios_panel | sed '/^[[:space:]]*$/d' | sort -u)
+
+        if [ "${#usuarios_panel[@]}" -eq 0 ]; then
+          info "No se encontraron usuarios administrados ni sesiones SSH activas."
+        else
+          for u_name in "${usuarios_panel[@]}"; do
             id "$u_name" >/dev/null 2>&1 || continue
             conns="$(usuario_conexiones "$u_name")"
             if [ "$conns" -gt 0 ]; then
@@ -607,9 +690,11 @@ menu_usuarios(){
             else
               echo -e "  👤 Usuario: ${GRAY}${u_name}${RESET} / ${RED}0 en línea${RESET} 🔴"
             fi
-          done < "$USERS_FILE"
-        else info "No hay usuarios registrados."; fi
-        echo; read -r -p "$(echo -e "${GRAY}Presiona ${NEON_GREEN}[Enter]${GRAY} para regresar al menú...${RESET}")"
+          done
+        fi
+
+        echo
+        read -r -p "$(echo -e "${GRAY}Presiona ${NEON_GREEN}[Enter]${GRAY} para regresar al menú...${RESET}")"
         ;;
       0) return ;;
       *) fail "Opción inválida."; pausa ;;
