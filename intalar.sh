@@ -1,4 +1,3 @@
-```
 #!/usr/bin/env bash
 # ==============================================================================
 # HAZAEL MORENO MULTI SCRIPT - BHTTP & BADVPN
@@ -235,13 +234,13 @@ instalar_servidor(){
 import argparse, asyncio, hashlib, time
 
 MAGIC=b"BHP1"
-READ_TIMEOUT=8.0
+READ_TIMEOUT=20.0
 BACKEND_CONNECT_TIMEOUT=10.0
-SESSION_IDLE_TIMEOUT=45.0
+SESSION_IDLE_TIMEOUT=90.0
 SESSION_MAX_AGE=21600.0
-CLEANUP_INTERVAL=5.0
+CLEANUP_INTERVAL=15.0
 LONGPOLL=2.0
-FRONTEND_GRACE=0.5
+FRONTEND_GRACE=1.0
 MAX_DOWN_BUFFER=8*1024*1024
 MAX_DOWN_CHUNKS=2048
 MAX_PAYLOAD=1024*1024
@@ -445,16 +444,7 @@ class Server:
                 await asyncio.sleep(CLEANUP_INTERVAL); now=time.monotonic(); dead=[]
                 async with self.slock:
                     for sid,s in list(self.sessions.items()):
-                        # Una sesión con frontend activo NO se considera huérfana.
-                        # Solo limpiamos sesiones sin clientes BHTTP, expiradas o cerradas.
-                        try:
-                            frontends=s.frontend_count
-                        except Exception:
-                            frontends=0
-                        if s.closed or frontends == 0 and (
-                            now-s.last_activity>SESSION_IDLE_TIMEOUT or
-                            now-s.created_at>SESSION_MAX_AGE
-                        ):
+                        if now-s.last_activity>SESSION_IDLE_TIMEOUT or now-s.created_at>SESSION_MAX_AGE or s.closed:
                             dead.append(s); self.sessions.pop(sid,None)
                 for s in dead:
                     try: await s.close()
@@ -646,17 +636,16 @@ obtener_usuarios_panel(){
 # ------------------------------------------------------------------------------
 obtener_conexiones_ssh(){
   # --------------------------------------------------------------------------
-  # CONTEO REAL DE CONEXIONES SSH/BHTTP (v3)
+  # CONTEO REAL DE DISPOSITIVOS CONECTADOS (v2)
   #
-  # - Cuenta solamente sockets TCP ESTABLISHED del puerto SSH.
-  # - Una conexión TCP = 1 conexión mostrada.
-  # - Deduplica por socket (IP/puerto remoto + PID del sshd), no por proceso.
-  # - Solo acepta sesiones cuyo sshd asociado pertenece a un usuario válido.
-  # - No cuenta root, sshd ni conexiones en estado distinto de ESTABLISHED.
-  # - Para BHTTP NO se excluye 127.0.0.1: esas conexiones son el backend SSH
-  #   real de los clientes BHTTP.
-  # - Si el cliente BHTTP desaparece, el backend se libera por el cierre del
-  #   frontend y, como respaldo, por el keepalive de SSH.
+  # Cambios respecto a la versión anterior:
+  #   - Se cuenta POR CONEXIÓN TCP ESTABLECIDA (IP:puerto del cliente), no por
+  #     proceso. Antes un mismo dispositivo sumaba varias veces (proceso
+  #     privilegiado + proceso de sesión + sesiones extra del mismo cliente).
+  #   - Las conexiones se deduplican: una conexión = 1 dispositivo.
+  #   - Si el socket ya no está ESTABLISHED, deja de contarse al instante.
+  #   - Fallback por tabla de procesos solo si "ss" no existe.
+  #   - Nunca cuenta root ni nombres raros.
   # --------------------------------------------------------------------------
 
   declare -A conteo=()
@@ -664,7 +653,7 @@ obtener_conexiones_ssh(){
   declare -A proc_args=()
   declare -A conn_vista=()
 
-  local line pid owner args usuario peer local_addr key p
+  local line pid owner args usuario peer found p
   local ssh_port="${SSHPORT:-22}"
   local proc_snapshot=""
   local sockets=""
@@ -678,63 +667,60 @@ obtener_conexiones_ssh(){
   done <<< "$proc_snapshot"
 
   if command -v ss >/dev/null 2>&1; then
+    # Solo conexiones ESTABLISHED cuyo puerto local es el de SSH.
     sockets="$(ss -Hntp state established "( sport = :$ssh_port )" 2>/dev/null || true)"
 
     while IFS= read -r line; do
       [ -n "$line" ] || continue
 
-      # ss normalmente entrega:
-      # ESTAB ... LOCAL:PUERTO PEER:PUERTO users:(("sshd",pid=123,fd=3))
-      local_addr="$(awk '{print $(NF-2)}' <<< "$line")"
+      # Dirección del cliente (penúltima columna antes de users:).
       peer="$(awk '{print $(NF-1)}' <<< "$line")"
-      [ -n "$local_addr" ] || continue
       [ -n "$peer" ] || continue
+      [ -n "${conn_vista[$peer]:-}" ] && continue
 
-      # Extraemos los PID del sshd dueño del socket.
+      usuario=""
       while read -r p; do
         [[ "$p" =~ ^[0-9]+$ ]] || continue
         owner="${proc_user[$p]:-}"
         args="${proc_args[$p]:-}"
 
-        usuario=""
+        # OpenSSH: "sshd: usuario@pts/0", "sshd: usuario@notty" o "sshd: usuario [priv]"
         if [[ "$args" =~ sshd:[[:space:]]+([^[:space:]@\[]+)([@[:space:]]|$) ]]; then
           usuario="${BASH_REMATCH[1]}"
+        # Dropbear: el proceso hijo pertenece al usuario autenticado.
         elif [[ "$args" == *dropbear* ]] && [ -n "$owner" ] &&
              [ "$owner" != "root" ] && [ "$owner" != "sshd" ]; then
           usuario="$owner"
         fi
 
+        # Preferimos un usuario válido; si aún no hay, seguimos buscando.
         if [ -n "$usuario" ] && [ "$usuario" != "root" ] &&
-           [ "$usuario" != "unknown" ] &&
-           [[ "$usuario" =~ ^[A-Za-z0-9._-]+$ ]]; then
-
-          # El mismo socket puede aparecer asociado a más de un PID en algunos
-          # builds de ss. Se cuenta una sola vez.
-          key="${local_addr}|${peer}|${p}"
-          [ -n "${conn_vista[$key]:-}" ] && continue
-          conn_vista["$key"]=1
-
-          conteo["$usuario"]=$(( ${conteo[$usuario]:-0} + 1 ))
+           [ "$usuario" != "unknown" ] && [[ "$usuario" =~ ^[A-Za-z0-9._-]+$ ]]; then
           break
         fi
+        usuario=""
       done < <(grep -oE 'pid=[0-9]+' <<< "$line" | cut -d= -f2 | sort -un)
+
+      # Conexión sin usuario autenticado (handshake) o root: no se cuenta.
+      [ -n "$usuario" ] || continue
+
+      conn_vista["$peer"]=1
+      conteo["$usuario"]=$(( ${conteo[$usuario]:-0} + 1 ))
     done <<< "$sockets"
 
   else
-    # Fallback sin ss: solo procesos de sesión de usuario, nunca [priv].
+    # FALLBACK sin "ss": una sesión sshd de usuario (sin [priv]) = 1 conexión.
     while read -r pid owner args; do
       [[ "$pid" =~ ^[0-9]+$ ]] || continue
       usuario=""
-
-      if [[ "$args" =~ sshd:[[:space:]]+([^[:space:]@\[]+)@ ]]; then
+      if [[ "$args" =~ sshd:[[:space:]]+([^[:space:]@]+)@ ]]; then
         usuario="${BASH_REMATCH[1]}"
       elif [[ "$args" == *dropbear* ]] && [ -n "$owner" ] &&
            [ "$owner" != "root" ] && [ "$owner" != "sshd" ]; then
         usuario="$owner"
       fi
-
       if [ -n "$usuario" ] && [ "$usuario" != "root" ] &&
-         [ "$usuario" != "unknown" ] && [[ "$usuario" =~ ^[A-Za-z0-9._-]+$ ]]; then
+         [[ "$usuario" =~ ^[A-Za-z0-9._-]+$ ]]; then
         conteo["$usuario"]=$(( ${conteo[$usuario]:-0} + 1 ))
       fi
     done <<< "$proc_snapshot"
@@ -749,7 +735,7 @@ obtener_conexiones_ssh(){
 # KEEPALIVE DE SSH
 # Cuando un celular pierde señal o cambia de red, la conexión TCP puede quedar
 # "fantasma" por horas y el panel seguía contándola. Con estos valores, SSH
-# cierra esas conexiones muertas en ~10 segundos. Es un archivo aparte
+# cierra esas conexiones muertas en ~30 segundos. Es un archivo aparte
 # (drop-in), no modifica sshd_config, y usa reload (no corta sesiones activas).
 # ------------------------------------------------------------------------------
 aplicar_keepalive_ssh(){
@@ -762,8 +748,8 @@ aplicar_keepalive_ssh(){
 
   cat > "$dropin" <<'KEOF'
 # Detecta clientes caídos y libera su sesión (usado por el panel de usuarios en línea)
-ClientAliveInterval 5
-ClientAliveCountMax 2
+ClientAliveInterval 10
+ClientAliveCountMax 3
 TCPKeepAlive yes
 KEOF
 
@@ -906,7 +892,7 @@ menu_usuarios(){
           fi
 
           frame+="  ${GRAY}🔄 Se actualiza cada segundo • $(date '+%H:%M:%S')${RESET}"$'\n'
-          frame+="  ${GRAY}Cada conexión activa = 1 dispositivo. Las conexiones muertas se limpian automáticamente.${RESET}"$'\n'
+          frame+="  ${GRAY}Cada dispositivo = 1 conexión. Al desconectarse baja solo.${RESET}"$'\n'
           frame+="  ${GRAY}Presiona Enter para regresar al menú.${RESET}"$'\n'
 
           clear_screen
@@ -1149,4 +1135,3 @@ menu_principal(){
 check_root
 cargar_config
 menu_principal
-```
