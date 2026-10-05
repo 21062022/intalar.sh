@@ -636,31 +636,26 @@ obtener_usuarios_panel(){
 # ------------------------------------------------------------------------------
 obtener_conexiones_ssh(){
   # --------------------------------------------------------------------------
-  # DETECCIÓN PROFESIONAL DE SESIONES SSH EN TIEMPO REAL
-  #
-  # Objetivo:
-  #   1) Detectar tanto SSH directo como SSH transportado por BHTTP.
-  #   2) No mostrar root ni cuentas ajenas al panel.
-  #   3) No depender de TTY: funciona también con @notty.
-  #   4) Hacer una sola instantánea de procesos + una lectura de sockets.
-  #   5) Evitar falsos positivos de procesos normales del usuario.
+  # MONITOR DE CONEXIONES SSH/BHTTP EN TIEMPO REAL
+  # --------------------------------------------------------------------------
+  # IMPORTANTE:
+  # - Cada conexión TCP ESTABLISHED cuenta una sola vez.
+  # - Se identifica por PID + socket, evitando acumulaciones.
+  # - No se usa la tabla completa de procesos como contador, porque un sshd
+  #   viejo/huérfano puede seguir visible aunque ya no tenga conexión activa.
+  # - La salida es una fotografía nueva en cada actualización.
   # --------------------------------------------------------------------------
 
   declare -A conteo=()
-  declare -A proc_user=()
+  declare -A vistos=()
   declare -A proc_args=()
-  declare -A pids_vistos=()
+  declare -A proc_user=()
 
-  local line pid owner args usuario
   local ssh_port="${SSHPORT:-22}"
-  local proc_snapshot=""
-  local sockets=""
+  local proc_snapshot="" sockets="" line pid owner args usuario clave
 
-  # --------------------------------------------------------------------------
-  # SNAPSHOT ÚNICO DE PROCESOS
-  # --------------------------------------------------------------------------
+  # Snapshot de procesos únicamente para saber qué usuario pertenece al PID.
   proc_snapshot="$(ps -eo pid=,user=,args= 2>/dev/null || true)"
-
   while read -r pid owner args; do
     [ -n "$pid" ] || continue
     [[ "$pid" =~ ^[0-9]+$ ]] || continue
@@ -668,91 +663,61 @@ obtener_conexiones_ssh(){
     proc_args["$pid"]="$args"
   done <<< "$proc_snapshot"
 
-  # --------------------------------------------------------------------------
-  # MÉTODO PRINCIPAL: SOCKETS ESTABLECIDOS DEL PUERTO SSH
-  # Esto permite detectar también sesiones BHTTP cuyo backend termina en SSH.
-  # --------------------------------------------------------------------------
+  # ÚNICA FUENTE DEL CONTADOR: sockets TCP actualmente ESTABLISHED.
+  # El fallback conserva compatibilidad con versiones distintas de ss,
+  # pero nunca vuelve a contar procesos por separado.
   if command -v ss >/dev/null 2>&1; then
     sockets="$(ss -Hntp state established "sport = :$ssh_port" 2>/dev/null || true)"
-
-    # Algunos sistemas tienen una sintaxis de ss distinta. Fallback seguro.
     if [ -z "$sockets" ]; then
-      sockets="$(ss -Hntp 2>/dev/null | awk -v p=":$ssh_port" '$4 ~ p {print}' || true)"
+      sockets="$(ss -Hntp state established 2>/dev/null | awk -v p=":$ssh_port" '$4 ~ p {print}' || true)"
     fi
-
-    while IFS= read -r line; do
-      [ -n "$line" ] || continue
-
-      # Un socket normalmente referencia un PID en users:(...pid=123...).
-      while read -r pid; do
-        [ -n "$pid" ] || continue
-        [[ "$pid" =~ ^[0-9]+$ ]] || continue
-        [ -n "${pids_vistos[$pid]:-}" ] && continue
-        pids_vistos["$pid"]=1
-
-        owner="${proc_user[$pid]:-}"
-        args="${proc_args[$pid]:-}"
-        usuario=""
-
-        # OpenSSH normalmente usa: sshd: usuario@...
-        if [[ "$args" =~ sshd:[[:space:]]+([^[:space:]@]+)@ ]]; then
-          usuario="${BASH_REMATCH[1]}"
-        # Dropbear puede aparecer como dropbear ... usuario@...
-        elif [[ "$args" == *dropbear* ]]; then
-          if [[ "$args" =~ ([[:alnum:]_.-]+)@ ]]; then
-            usuario="${BASH_REMATCH[1]}"
-          elif [ -n "$owner" ] && [ "$owner" != "root" ] && [ "$owner" != "sshd" ]; then
-            usuario="$owner"
-          fi
-        # Si el socket pertenece a un proceso sshd/dropbear del usuario.
-        elif [ -n "$owner" ] && [ "$owner" != "root" ] && [ "$owner" != "sshd" ] &&
-             ( [[ "$args" == *sshd* ]] || [[ "$args" == *dropbear* ]] ); then
-          usuario="$owner"
-        fi
-
-        # Validación final: jamás contar root ni nombres extraños.
-        if [ -n "$usuario" ] && [ "$usuario" != "root" ] &&
-           [[ "$usuario" =~ ^[A-Za-z0-9._-]+$ ]]; then
-          conteo["$usuario"]=$(( ${conteo[$usuario]:-0} + 1 ))
-        fi
-      done < <(printf '%s\n' "$line" | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u)
-    done <<< "$sockets"
   fi
 
-  # --------------------------------------------------------------------------
-  # FALLBACK: TABLA DE PROCESOS
-  # Sirve en equipos donde ss no muestra PID o el proceso tiene otra forma.
-  # --------------------------------------------------------------------------
-  while read -r pid owner args; do
-    [ -n "$pid" ] || continue
-    [[ "$pid" =~ ^[0-9]+$ ]] || continue
-    [ -n "${pids_vistos[$pid]:-}" ] && continue
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
 
-    usuario=""
+    # Un socket ESTABLISHED debe tener un PID. Si ss no lo entrega, no se
+    # inventa una conexión: así evitamos falsos positivos/acumulaciones.
+    while read -r pid; do
+      [ -n "$pid" ] || continue
+      [[ "$pid" =~ ^[0-9]+$ ]] || continue
 
-    if [[ "$args" =~ sshd:[[:space:]]+([^[:space:]@]+)@ ]]; then
-      usuario="${BASH_REMATCH[1]}"
-    elif [[ "$args" == *dropbear* ]]; then
-      if [[ "$args" =~ ([[:alnum:]_.-]+)@ ]]; then
+      # Un PID + socket solo puede sumar una conexión una vez.
+      # El remote endpoint también forma parte de la clave para soportar
+      # varios dispositivos con las mismas credenciales.
+      clave="${pid}|${line%% users:*}"
+      [ -n "${vistos[$clave]:-}" ] && continue
+      vistos["$clave"]=1
+
+      owner="${proc_user[$pid]:-}"
+      args="${proc_args[$pid]:-}"
+      usuario=""
+
+      # OpenSSH: sshd: usuario@notty / sshd: usuario@pts/0
+      if [[ "$args" =~ sshd:[[:space:]]+([^[:space:]@]+)@ ]]; then
         usuario="${BASH_REMATCH[1]}"
-      elif [ -n "$owner" ] && [ "$owner" != "root" ] && [ "$owner" != "sshd" ]; then
-        usuario="$owner"
+      # Dropbear: intenta extraer usuario@...
+      elif [[ "$args" == *dropbear* ]]; then
+        if [[ "$args" =~ ([A-Za-z0-9._-]+)@ ]]; then
+          usuario="${BASH_REMATCH[1]}"
+        elif [ -n "$owner" ] && [ "$owner" != "root" ] && [ "$owner" != "sshd" ]; then
+          usuario="$owner"
+        fi
       fi
-    fi
 
-    if [ -n "$usuario" ] && [ "$usuario" != "root" ] &&
-       [[ "$usuario" =~ ^[A-Za-z0-9._-]+$ ]]; then
-      conteo["$usuario"]=$(( ${conteo[$usuario]:-0} + 1 ))
-    fi
-  done <<< "$proc_snapshot"
+      # Solo cuentas reales y no root.
+      if [ -n "$usuario" ] && [ "$usuario" != "root" ] &&
+         [[ "$usuario" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        conteo["$usuario"]=$(( ${conteo[$usuario]:-0} + 1 ))
+      fi
+    done < <(printf '%s\n' "$line" | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u)
+  done <<< "$sockets"
 
-  # --------------------------------------------------------------------------
-  # SALIDA ORDENADA PARA EL PANEL
-  # --------------------------------------------------------------------------
   for usuario in "${!conteo[@]}"; do
     printf '%s %s\n' "$usuario" "${conteo[$usuario]}"
   done | sort
 }
+
 menu_usuarios(){
   while true; do
     titulo; seccion "GESTIÓN DE USUARIOS Y CREDENCIALES"
@@ -851,22 +816,35 @@ menu_usuarios(){
             info "No hay usuarios registrados en el panel."
           else
             declare -A conexiones=()
+            local total_online=0 total_devices=0
 
-            # Una fotografía nueva en cada ciclo: nunca conserva una conexión
-            # anterior después de que el usuario se haya desconectado.
+            # Fotografía completamente nueva en cada ciclo.
+            # Si una conexión desapareció, desaparece del mapa inmediatamente.
             while read -r usuario cantidad; do
               [ -z "$usuario" ] && continue
               [[ "$cantidad" =~ ^[0-9]+$ ]] || continue
               conexiones["$usuario"]="$cantidad"
+              total_online=$((total_online + 1))
+              total_devices=$((total_devices + cantidad))
             done < <(obtener_conexiones_ssh)
+
+            echo -e "  ${NEON_BLUE}╭────────────────────────────────────────────────────────────╮${RESET}"
+            echo -e "  ${NEON_BLUE}│${RESET} ${WHITE}${BOLD}📡 RESUMEN EN VIVO${RESET}  ${GRAY}Usuarios únicos:${RESET} ${NEON_GREEN}${total_online}${RESET}  ${GRAY}Dispositivos:${RESET} ${NEON_ORANGE}${total_devices}${RESET} ${NEON_BLUE}│${RESET}"
+            echo -e "  ${NEON_BLUE}╰────────────────────────────────────────────────────────────╯${RESET}"
+            echo
 
             for u_name in "${usuarios_panel[@]}"; do
               conns="${conexiones[$u_name]:-0}"
 
               if [ "$conns" -gt 0 ]; then
-                echo -e "  👤 Usuario: ${NEON_GREEN}${u_name}${RESET} / ${NEON_ORANGE}${conns} conexión(es) activa(s)${RESET} 🟢"
+                if [ "$conns" -eq 1 ]; then
+                  txt="1 dispositivo conectado"
+                else
+                  txt="${conns} dispositivos conectados"
+                fi
+                echo -e "  ${NEON_GREEN}●${RESET} ${WHITE}${BOLD}${u_name}${RESET}  ${NEON_GREEN}ONLINE${RESET}  ${NEON_ORANGE}${txt}${RESET}"
               else
-                echo -e "  👤 Usuario: ${GRAY}${u_name}${RESET} / ${RED}0 en línea${RESET} 🔴"
+                echo -e "  ${GRAY}●${RESET} ${GRAY}${u_name}${RESET}  ${RED}OFFLINE${RESET}  ${GRAY}0 dispositivos conectados${RESET}"
               fi
             done
           fi
