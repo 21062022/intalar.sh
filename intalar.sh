@@ -952,135 +952,142 @@ menu_optimizar_vps(){
 }
 
 menu_bhttp_bbr(){
+  local backup="$CONFIG_DIR/bhttp-performance.backup"
+  local state_file="$CONFIG_DIR/bhttp-performance.state"
+
+  _perf_get(){ sysctl -n "$1" 2>/dev/null || true; }
+  _perf_set(){ sysctl -w "$1=$2" >/dev/null 2>&1; }
+  _perf_has(){ sysctl -n "$1" >/dev/null 2>&1; }
+
+  _perf_save(){
+    mkdir -p "$CONFIG_DIR"
+    cat > "$backup" <<EOF
+net.ipv4.tcp_congestion_control=$(_perf_get net.ipv4.tcp_congestion_control)
+net.core.default_qdisc=$(_perf_get net.core.default_qdisc)
+net.core.rmem_max=$(_perf_get net.core.rmem_max)
+net.core.wmem_max=$(_perf_get net.core.wmem_max)
+net.ipv4.tcp_rmem=$(_perf_get net.ipv4.tcp_rmem)
+net.ipv4.tcp_wmem=$(_perf_get net.ipv4.tcp_wmem)
+net.ipv4.tcp_fastopen=$(_perf_get net.ipv4.tcp_fastopen)
+net.ipv4.tcp_slow_start_after_idle=$(_perf_get net.ipv4.tcp_slow_start_after_idle)
+net.core.somaxconn=$(_perf_get net.core.somaxconn)
+net.ipv4.tcp_max_syn_backlog=$(_perf_get net.ipv4.tcp_max_syn_backlog)
+EOF
+  }
+
+  _perf_apply_sysctl(){
+    local profile="$1" cc qdisc
+    if [ "$profile" = "speed" ]; then
+      cc="bbr"; qdisc="fq"
+    else
+      cc="cubic"; qdisc="fq_codel"
+    fi
+
+    if ! grep -qw "$cc" /proc/sys/net/ipv4/tcp_allowed_congestion_control 2>/dev/null &&
+       ! grep -qw "$cc" /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null; then
+      if [ "$cc" = "bbr" ] && modprobe tcp_bbr 2>/dev/null; then :; fi
+    fi
+
+    if [ "$profile" = "speed" ] && ! grep -qw bbr /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null; then
+      return 2
+    fi
+
+    _perf_set net.core.default_qdisc "$qdisc" || true
+    _perf_set net.ipv4.tcp_congestion_control "$cc" || true
+    _perf_set net.core.rmem_max 67108864 || true
+    _perf_set net.core.wmem_max 67108864 || true
+    _perf_set net.ipv4.tcp_rmem "4096 131072 67108864" || true
+    _perf_set net.ipv4.tcp_wmem "4096 131072 67108864" || true
+    _perf_set net.core.somaxconn 8192 || true
+    _perf_set net.ipv4.tcp_max_syn_backlog 8192 || true
+    _perf_set net.ipv4.tcp_fastopen 3 || true
+    _perf_set net.ipv4.tcp_slow_start_after_idle 0 || true
+
+    # No tocar valores obsoletos o peligrosos; solo persistimos parámetros
+    # que el kernel actual acepte.
+    mkdir -p "$CONFIG_DIR"
+    cat > "$CONFIG_DIR/99-bhttp-performance.conf" <<EOF
+# BHTTP Performance Engine - generado por intalar.sh
+net.core.default_qdisc=$qdisc
+net.ipv4.tcp_congestion_control=$cc
+net.core.rmem_max=67108864
+net.core.wmem_max=67108864
+net.ipv4.tcp_rmem=4096 131072 67108864
+net.ipv4.tcp_wmem=4096 131072 67108864
+net.core.somaxconn=8192
+net.ipv4.tcp_max_syn_backlog=8192
+net.ipv4.tcp_fastopen=3
+net.ipv4.tcp_slow_start_after_idle=0
+EOF
+    mkdir -p /etc/sysctl.d
+    cp "$CONFIG_DIR/99-bhttp-performance.conf" /etc/sysctl.d/99-bhttp-performance.conf 2>/dev/null || true
+    sysctl --system >/dev/null 2>&1 || sysctl -p /etc/sysctl.d/99-bhttp-performance.conf >/dev/null 2>&1 || true
+    _perf_set net.ipv4.tcp_congestion_control "$cc" || true
+    _perf_set net.core.default_qdisc "$qdisc" || true
+  }
+
+  _perf_restore(){
+    if [ -s "$backup" ]; then
+      while IFS='=' read -r key value; do
+        [ -n "$key" ] || continue
+        _perf_set "$key" "$value" || true
+      done < "$backup"
+    fi
+    rm -f /etc/sysctl.d/99-bhttp-performance.conf "$CONFIG_DIR/99-bhttp-performance.conf" "$state_file"
+    sysctl --system >/dev/null 2>&1 || true
+    BBR_STATUS="OFF"
+    guardar_config
+  }
+
+  _perf_state(){
+    case "$(cat "$state_file" 2>/dev/null)" in
+      speed) echo "${NEON_GREEN}VELOCIDAD PURA 🟢${RESET}" ;;
+      stable) echo "${NEON_GREEN}ESTABILIDAD 🟢${RESET}" ;;
+      *) echo "${RED}APAGADO 🔴${RESET}" ;;
+    esac
+  }
+
   while true; do
-    titulo; seccion "BHTTP BBR • ACELERACIÓN TCP"
-    echo -e "  ${WHITE}Estado:${RESET} ${NEON_ORANGE}$BBR_STATUS${RESET}"; linea
-    echo -e "  ${NEON_GREEN}[1]${RESET} BBR + FQ"
-    echo -e "  ${NEON_GREEN}[2]${RESET} BBR + FQ_Codel"
-    echo -e "  ${NEON_GREEN}[3]${RESET} Apagar BBR"
+    titulo; seccion "BHTTP PERFORMANCE ENGINE"
+    echo -e "  ${WHITE}Estado:${RESET} $(_perf_state)"; linea
+    echo -e "  ${NEON_GREEN}[1]${RESET} ESTABILIDAD"
+    echo -e "      ${GRAY}CUBIC + FQ_Codel + buffers equilibrados${RESET}"
+    echo -e "  ${NEON_GREEN}[2]${RESET} VELOCIDAD PURA"
+    echo -e "      ${GRAY}BBR + FQ + TCP Fast Open + tuning de colas${RESET}"
+    echo -e "  ${RED}[3]${RESET} APAGAR OPTIMIZACIÓN"
     echo -e "  ${RED}[0]${RESET} Regresar"; linea
     read -r -p " Opción: " op
     case "$op" in
-      1)
-        sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1 || true
-        sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || true
-        sysctl -w net.core.rmem_max=67108864 >/dev/null 2>&1 || true
-        sysctl -w net.core.wmem_max=67108864 >/dev/null 2>&1 || true
-        grep -q '^net.ipv4.tcp_congestion_control=bbr$' /etc/sysctl.conf 2>/dev/null || echo 'net.ipv4.tcp_congestion_control=bbr' >> /etc/sysctl.conf
-        grep -q '^net.core.default_qdisc=fq$' /etc/sysctl.conf 2>/dev/null || echo 'net.core.default_qdisc=fq' >> /etc/sysctl.conf
-        sysctl -p >/dev/null 2>&1 || true; BBR_STATUS="BBR + FQ (ON)"; guardar_config; ok "BBR activado."; pausa ;;
-      2)
-        sysctl -w net.core.default_qdisc=fq_codel >/dev/null 2>&1 || true
-        sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || true
-        grep -q '^net.ipv4.tcp_congestion_control=bbr$' /etc/sysctl.conf 2>/dev/null || echo 'net.ipv4.tcp_congestion_control=bbr' >> /etc/sysctl.conf
-        grep -q '^net.core.default_qdisc=fq_codel$' /etc/sysctl.conf 2>/dev/null || echo 'net.core.default_qdisc=fq_codel' >> /etc/sysctl.conf
-        sysctl -p >/dev/null 2>&1 || true; BBR_STATUS="BBR + FQ_Codel (ON)"; guardar_config; ok "BBR activado."; pausa ;;
-      3)
-        sed -i '/^net.ipv4.tcp_congestion_control=/d;/^net.core.default_qdisc=/d' /etc/sysctl.conf 2>/dev/null || true
-        sysctl -w net.ipv4.tcp_congestion_control=cubic >/dev/null 2>&1 || true
-        sysctl -w net.core.default_qdisc=pfifo_fast >/dev/null 2>&1 || true
-        BBR_STATUS="OFF"; guardar_config; ok "BBR apagado."; pausa ;;
-      0) return ;;
-      *) fail "Opción inválida."; pausa ;;
-    esac
-  done
-}
-
-menu_autostart(){
-  while true; do
-    titulo; seccion "AUTO INICIAR SCRIPT AL ABRIR TERMINAL"
-    echo -e "  ${WHITE}Estado:${RESET} ${NEON_ORANGE}$AUTOSTART_STATUS${RESET}"; linea
-    echo -e "  [1] Encender"; echo -e "  [2] Apagar"; echo -e "  [0] Regresar"; linea
-    read -r -p " Opción: " op
-    case "$op" in
-      1)
-        AUTOSTART_STATUS="ON"; guardar_config
-        for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
-          if [ -f "$rc" ] || [ "$rc" = "/root/.bashrc" ]; then
-            touch "$rc" 2>/dev/null || true
-            sed -i '/# HAZAEL_AUTOSTART/d' "$rc" 2>/dev/null || true
-            echo "[[ \$- == *i* ]] && [ -z \"\$TMUX\" ] && sudo bash $SCRIPT_PATH # HAZAEL_AUTOSTART" >> "$rc"
+      1|2)
+        if [ ! -s "$backup" ]; then _perf_save; fi
+        if [ "$op" = "2" ]; then
+          if _perf_apply_sysctl speed; then
+            printf '%s\n' speed > "$state_file"
+            BBR_STATUS="VELOCIDAD PURA (ON)"
+            guardar_config
+            systemctl restart "$SERVICE" >/dev/null 2>&1 || true
+            ok "VELOCIDAD PURA activada: BBR + FQ y tuning TCP aplicado."
+          else
+            fail "Este kernel no tiene BBR disponible; no se aplicó el perfil de velocidad."
           fi
-        done
-        ok "Auto inicio activado."; pausa ;;
-      2)
-        AUTOSTART_STATUS="OFF"; guardar_config
-        for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do sed -i '/# HAZAEL_AUTOSTART/d' "$rc" 2>/dev/null || true; done
-        ok "Auto inicio desactivado."; pausa ;;
+        else
+          _perf_apply_sysctl stable
+          printf '%s\n' stable > "$state_file"
+          BBR_STATUS="ESTABILIDAD (ON)"
+          guardar_config
+          systemctl restart "$SERVICE" >/dev/null 2>&1 || true
+          ok "ESTABILIDAD activada: CUBIC + FQ_Codel y tuning equilibrado."
+        fi
+        pausa ;;
+      3)
+        _perf_restore
+        systemctl restart "$SERVICE" >/dev/null 2>&1 || true
+        ok "Optimización apagada y valores anteriores restaurados."
+        pausa ;;
       0) return ;;
       *) fail "Opción inválida."; pausa ;;
     esac
   done
-}
-
-ejecutar_optimizacion_manual(){
-  sync
-  echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
-  swapoff -a 2>/dev/null || true
-  swapon -a 2>/dev/null || true
-}
-
-menu_optimizacion_automatica(){
-  while true; do
-    titulo; seccion "OPTIMIZACIÓN AUTOMÁTICA CADA 6 HORAS"
-    echo -e "  ${WHITE}Estado:${RESET} ${NEON_ORANGE}$CRON_STATUS${RESET}"; linea
-    echo -e "  [1] Activar"; echo -e "  [2] Desactivar"; echo -e "  [3] Ejecutar ahora"; echo -e "  [0] Regresar"; linea
-    read -r -p " Opción: " op
-    case "$op" in
-      1)
-        CRON_STATUS="ON"; guardar_config
-        (crontab -l 2>/dev/null | grep -v 'HAZAEL_DROP_CACHES'; echo '0 */6 * * * sync && echo 3 > /proc/sys/vm/drop_caches # HAZAEL_DROP_CACHES') | crontab -
-        ok "Optimización automática activada."; pausa ;;
-      2)
-        CRON_STATUS="OFF"; guardar_config
-        (crontab -l 2>/dev/null | grep -v 'HAZAEL_DROP_CACHES') | crontab -
-        ok "Optimización automática desactivada."; pausa ;;
-      3) ejecutar_optimizacion_manual; ok "Sistema optimizado."; pausa ;;
-      0) return ;;
-      *) fail "Opción inválida."; pausa ;;
-    esac
-  done
-}
-
-actualizar_script(){
-  titulo; seccion "ACTUALIZADOR AUTOMÁTICO DEL SCRIPT"
-  info "Descargando y verificando la nueva versión..."
-  command -v curl >/dev/null 2>&1 || { fail "curl no está instalado."; pausa; return 1; }
-  local tmp="/tmp/intalar_update.sh"
-  if ! curl -fsSL --max-time 30 "$GITHUB_URL" -o "$tmp"; then
-    fail "No se pudo descargar el archivo desde GitHub."; pausa; return 1
-  fi
-  if ! head -n 1 "$tmp" | grep -qE '^#!/.*(bash|sh)'; then
-    fail "El archivo descargado no parece ser un script válido."; rm -f "$tmp"; pausa; return 1
-  fi
-  if ! bash -n "$tmp"; then
-    fail "La versión descargada tiene errores de sintaxis. NO se reemplazó el script."
-    rm -f "$tmp"; pausa; return 1
-  fi
-  cp -a "$SCRIPT_PATH" "${SCRIPT_PATH}.bak.$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
-  install -m 0755 "$tmp" "$SCRIPT_PATH"
-  rm -f "$tmp"
-  ok "Script actualizado y verificado correctamente."
-  info "Reiniciando el panel..."
-  sleep 1
-  exec bash "$SCRIPT_PATH"
-}
-
-destruir_script_total(){
-  titulo
-  echo -e "${RED}${BOLD}ADVERTENCIA: DESTRUCCIÓN TOTAL${RESET}"
-  echo "Esto detendrá servicios y eliminará archivos del script."
-  read -r -p "¿Continuar? (s/n): " c
-  [[ "$c" =~ ^[sS]$ ]] || { info "Cancelado."; pausa; return; }
-  systemctl stop "$SERVICE" "$BADVPN_SERVICE" 2>/dev/null || true
-  systemctl disable "$SERVICE" "$BADVPN_SERVICE" 2>/dev/null || true
-  rm -f "$UNIT" "$BADVPN_UNIT" "$ADM_BIN" "$ADMIN_BIN" "$SCRIPT_PATH"
-  rm -rf "$DESTDIR" "$CONFIG_DIR"
-  systemctl daemon-reload
-  for rc in /root/.bashrc /root/.zshrc /etc/bash.bashrc; do
-    sed -i '/# HAZAEL_AUTOSTART/d;/alias adm=/d;/alias admin=/d' "$rc" 2>/dev/null || true
-  done
-  ok "Desinstalación completada."; exit 0
 }
 
 menu_principal(){
