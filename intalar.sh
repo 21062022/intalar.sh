@@ -16,10 +16,6 @@ NEON_PINK="\e[38;5;198m"; NEON_ORANGE="\e[38;5;208m"
 DESTDIR="/usr/local/lib/bhttp"
 SERVER_PY="$DESTDIR/bhttp-server.py"
 UNIT="/etc/systemd/system/bhttp.service"
-WS_DIR="/usr/local/lib/ssh-ws-proxy"
-WS_SERVER_PY="$WS_DIR/ssh-ws-proxy.py"
-WS_UNIT="/etc/systemd/system/ssh-ws-proxy.service"
-WS_CONFIG="/etc/ssh-ws-proxy.conf"
 BADVPN_UNIT="/etc/systemd/system/badvpn.service"
 SERVICE="bhttp"; BADVPN_SERVICE="badvpn"
 CONFIG_DIR="/etc/bhttp"
@@ -31,6 +27,15 @@ ADM_BIN="/usr/local/bin/adm"
 ADMIN_BIN="/usr/local/bin/admin"
 PUERTO="443"; SSHPORT=22; BADVPN_PORT=7300
 BADVPN_STATE="OFF"; AUTOSTART_STATUS="OFF"; CRON_STATUS="OFF"; BBR_STATUS="OFF"
+
+# --- Proxy WebSocket → SSH (Python) — OPCIÓN 12 ---
+# Totalmente aparte de BHTTP: carpeta, config y servicio propios.
+WSPY_DIR="/usr/local/lib/proxy-python"
+WSPY_PY="$WSPY_DIR/proxy-python.py"
+WSPY_CONF_DIR="/etc/proxy-python"
+WSPY_CONF="$WSPY_CONF_DIR/puerto.conf"
+WSPY_UNIT="/etc/systemd/system/proxy-python.service"
+WSPY_SERVICE="proxy-python"
 
 GITHUB_URL="https://raw.githubusercontent.com/21062022/intalar.sh/main/intalar.sh"
 
@@ -139,9 +144,7 @@ EOF
 cargar_config(){
   mkdir -p "$CONFIG_DIR"
   [ -f "$CONFIG" ] && source "$CONFIG"
-  [ -f "$WS_CONFIG" ] && source "$WS_CONFIG"
   : "${PUERTO:=443}"; : "${SSHPORT:=22}"; : "${BADVPN_PORT:=7300}"
-  : "${WS_PORT:=8080}"
   : "${BADVPN_STATE:=OFF}"; : "${AUTOSTART_STATUS:=OFF}"
   : "${CRON_STATUS:=OFF}"; : "${BBR_STATUS:=OFF}"
 }
@@ -155,6 +158,18 @@ BADVPN_STATE=$BADVPN_STATE
 AUTOSTART_STATUS=$AUTOSTART_STATUS
 CRON_STATUS=$CRON_STATUS
 BBR_STATUS=$BBR_STATUS
+EOF
+}
+
+cargar_wspy(){
+  mkdir -p "$WSPY_CONF_DIR" 2>/dev/null || true
+  [ -f "$WSPY_CONF" ] && source "$WSPY_CONF"
+  : "${WSPORT:=80}"
+}
+guardar_wspy(){
+  mkdir -p "$WSPY_CONF_DIR" 2>/dev/null || true
+  cat > "$WSPY_CONF" <<EOF
+WSPORT=$WSPORT
 EOF
 }
 
@@ -957,6 +972,264 @@ menu_optimizar_vps(){
   done
 }
 
+# ------------------------------------------------------------------------------
+# OPCIÓN 12: PROXY WEBSOCKET → SSH (PYTHON)
+# Escucha en el puerto que elijas (80, 8080, etc.), responde la cabecera
+# HTTP/1.1 101 que esperan las apps tipo HTTP Custom / HTTP Injector, y
+# reenvía los bytes en bruto hacia el SSH real (127.0.0.1:22).
+# Escrito desde cero, sin dependencias externas. No toca BHTTP ni su puerto.
+# ------------------------------------------------------------------------------
+instalar_proxy_python(){
+  titulo; seccion "INSTALAR PROXY WEBSOCKET → SSH (PYTHON) — OPCIÓN 12"
+  if ! command -v python3 >/dev/null 2>&1; then
+    info "Instalando python3..."
+    apt-get update -y >/dev/null 2>&1 || true
+    apt-get install -y python3 >/dev/null 2>&1 || true
+  fi
+  command -v python3 >/dev/null 2>&1 || { fail "No se pudo instalar python3."; pausa; return 1; }
+
+  cargar_wspy
+  local sugerido="${WSPORT:-80}" nuevo
+  echo -e "  ${WHITE}Este proxy escucha en un puerto y reenvía la sesión al SSH real (127.0.0.1:${SSHPORT}).${RESET}"
+  echo -e "  ${GRAY}Úsalo para apps WebSocket/HTTP Custom. BHTTP sigue intacto en su puerto ${PUERTO}.${RESET}"
+  echo -e "  ${WHITE}Puerto actual/sugerido para el proxy:${RESET} ${NEON_GREEN}$sugerido${RESET}"
+  read -r -p "$(echo -e " ${NEON_ORANGE}◆${RESET} Ingresa el puerto (Enter mantiene $sugerido): ")" nuevo
+  if [ -n "$nuevo" ]; then
+    if [[ "$nuevo" =~ ^[0-9]+$ ]] && [ "$nuevo" -gt 0 ] && [ "$nuevo" -le 65535 ]; then
+      WSPORT="$nuevo"
+    else
+      fail "Puerto inválido. Se mantendrá $sugerido."
+      WSPORT="$sugerido"
+    fi
+  else
+    WSPORT="$sugerido"
+  fi
+
+  if [ "$WSPORT" = "$PUERTO" ]; then
+    fail "Ese puerto ya lo usa BHTTP ($PUERTO). Elige otro para no chocar con él."
+    pausa; return 1
+  fi
+  if [ "$WSPORT" = "$SSHPORT" ]; then
+    fail "Ese puerto es el del SSH real ($SSHPORT). Elige otro (ej. 80 u 8080)."
+    pausa; return 1
+  fi
+
+  mkdir -p "$WSPY_DIR"
+  cat > "$WSPY_PY" <<'PYEOF'
+#!/usr/bin/env python3
+# Proxy WebSocket -> SSH, minimalista y sin dependencias externas.
+# Uso: proxy-python.py <puerto_escucha> <ssh_host> <ssh_puerto>
+import socket
+import select
+import sys
+import threading
+import signal
+
+BUFLEN = 4096
+TIMEOUT = 60
+HANDSHAKE_TIMEOUT = 5
+
+HANDSHAKE_RESPONSE = (
+    b"HTTP/1.1 101 Switching Protocols\r\n"
+    b"\r\n"
+)
+
+
+def leer_peticion(cliente):
+    """Lee la petición HTTP/WS inicial del cliente hasta la línea en blanco,
+    sin bloquear el hilo indefinidamente si el cliente no manda nada."""
+    datos = b""
+    cliente.settimeout(HANDSHAKE_TIMEOUT)
+    try:
+        while b"\r\n\r\n" not in datos and len(datos) < 65536:
+            trozo = cliente.recv(BUFLEN)
+            if not trozo:
+                break
+            datos += trozo
+    except socket.timeout:
+        pass
+    except Exception:
+        pass
+    return datos
+
+
+def retransmitir(cliente, backend):
+    """Reenvía bytes en ambas direcciones hasta que uno de los lados cierre."""
+    sockets = [cliente, backend]
+    while True:
+        try:
+            listos, _, excepcion = select.select(sockets, [], sockets, TIMEOUT)
+        except Exception:
+            break
+        if excepcion or not listos:
+            break
+        cerrado = False
+        for s in listos:
+            try:
+                datos = s.recv(BUFLEN)
+            except Exception:
+                cerrado = True
+                break
+            if not datos:
+                cerrado = True
+                break
+            destino = backend if s is cliente else cliente
+            try:
+                destino.sendall(datos)
+            except Exception:
+                cerrado = True
+                break
+        if cerrado:
+            break
+
+
+def atender_cliente(cliente, ssh_host, ssh_puerto):
+    backend = None
+    try:
+        leer_peticion(cliente)
+        # Respondemos siempre 101: es la cabecera que esperan las apps
+        # tipo HTTP Custom / WebSocket para dar por hecho el "upgrade".
+        cliente.sendall(HANDSHAKE_RESPONSE)
+
+        backend = socket.create_connection((ssh_host, ssh_puerto), timeout=10)
+        cliente.settimeout(TIMEOUT)
+        backend.settimeout(TIMEOUT)
+        retransmitir(cliente, backend)
+    except Exception:
+        pass
+    finally:
+        for s in (cliente, backend):
+            try:
+                if s:
+                    s.close()
+            except Exception:
+                pass
+
+
+def main():
+    if len(sys.argv) < 4:
+        print("Uso: proxy-python.py <puerto_escucha> <ssh_host> <ssh_puerto>")
+        sys.exit(1)
+
+    puerto_escucha = int(sys.argv[1])
+    ssh_host = sys.argv[2]
+    ssh_puerto = int(sys.argv[3])
+
+    servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    servidor.bind(("0.0.0.0", puerto_escucha))
+    servidor.listen(200)
+    print(f"[proxy-python] escuchando en 0.0.0.0:{puerto_escucha} -> SSH {ssh_host}:{ssh_puerto}")
+
+    def parar(*_args):
+        try:
+            servidor.close()
+        finally:
+            sys.exit(0)
+
+    signal.signal(signal.SIGTERM, parar)
+    signal.signal(signal.SIGINT, parar)
+
+    while True:
+        try:
+            cliente, _addr = servidor.accept()
+        except OSError:
+            break
+        hilo = threading.Thread(
+            target=atender_cliente,
+            args=(cliente, ssh_host, ssh_puerto),
+            daemon=True,
+        )
+        hilo.start()
+
+
+if __name__ == "__main__":
+    main()
+PYEOF
+  chmod +x "$WSPY_PY"
+
+  cat > "$WSPY_UNIT" <<EOF
+[Unit]
+Description=Proxy WebSocket a SSH (Python) - puerto $WSPORT -> 127.0.0.1:$SSHPORT
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/env python3 $WSPY_PY $WSPORT 127.0.0.1 $SSHPORT
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable "$WSPY_SERVICE" >/dev/null 2>&1 || true
+  systemctl restart "$WSPY_SERVICE" >/dev/null 2>&1 || true
+  abrir_puerto_sistema "$WSPORT"
+  guardar_wspy
+
+  sleep 1
+  if systemctl is-active --quiet "$WSPY_SERVICE"; then
+    ok "Proxy WebSocket→SSH activo en el puerto $WSPORT → SSH 127.0.0.1:$SSHPORT."
+    info "Conecta tu app (HTTP Custom / WS) usando este puerto; el servidor real sigue siendo el SSH en $SSHPORT."
+  else
+    fail "El servicio no arrancó. Revisa: journalctl -u $WSPY_SERVICE -n 50 --no-pager"
+  fi
+  pausa
+}
+
+menu_proxy_python(){
+  while true; do
+    cargar_wspy
+    titulo; seccion "WEBSOCKET → SSH (PROXY PYTHON) — OPCIÓN 12"
+    local st
+    if [ -f "$WSPY_UNIT" ]; then st="$(estado_servicio "$WSPY_SERVICE")"; else st="${GRAY}○ NO INSTALADO${RESET}"; fi
+    echo -e "  ${WHITE}Estado:${RESET} $st   ${WHITE}Puerto:${RESET} ${NEON_GREEN}${WSPORT:-—}${RESET}   ${WHITE}Destino SSH:${RESET} ${NEON_GREEN}127.0.0.1:${SSHPORT}${RESET}"
+    echo -e "  ${GRAY}Responde cabecera HTTP 101 y reenvía los datos tal cual al SSH real.${RESET}"
+    echo -e "  ${GRAY}Independiente de BHTTP (puerto ${PUERTO}) — no lo afecta.${RESET}"; linea
+    echo -e "  ${NEON_GREEN}[1]${RESET} Instalar / cambiar puerto"
+    echo -e "  ${NEON_GREEN}[2]${RESET} Encender"
+    echo -e "  ${NEON_GREEN}[3]${RESET} Apagar"
+    echo -e "  ${NEON_GREEN}[4]${RESET} Ver registro (log) en vivo"
+    echo -e "  ${RED}[5]${RESET} Desinstalar"
+    echo -e "  ${RED}[0]${RESET} Regresar"; linea
+    read -r -p " Opción: " op
+    case "$op" in
+      1) instalar_proxy_python ;;
+      2)
+        if [ ! -f "$WSPY_UNIT" ]; then
+          fail "Aún no está instalado. Usa la opción 1 primero."
+        else
+          systemctl enable "$WSPY_SERVICE" >/dev/null 2>&1 || true
+          systemctl start "$WSPY_SERVICE" >/dev/null 2>&1 || true
+          ok "Proxy encendido."
+        fi
+        pausa ;;
+      3)
+        systemctl stop "$WSPY_SERVICE" 2>/dev/null || true
+        systemctl disable "$WSPY_SERVICE" 2>/dev/null || true
+        ok "Proxy apagado."
+        pausa ;;
+      4)
+        titulo; seccion "LOG EN VIVO — Ctrl+C para salir"
+        journalctl -u "$WSPY_SERVICE" -f -n 50 --no-pager
+        ;;
+      5)
+        systemctl stop "$WSPY_SERVICE" 2>/dev/null || true
+        systemctl disable "$WSPY_SERVICE" 2>/dev/null || true
+        rm -f "$WSPY_UNIT"
+        rm -rf "$WSPY_DIR" "$WSPY_CONF_DIR"
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        ok "Proxy WebSocket→SSH desinstalado por completo. BHTTP no fue tocado."
+        pausa ;;
+      0) return ;;
+      *) fail "Opción inválida."; pausa ;;
+    esac
+  done
+}
+
 menu_bhttp_bbr(){
   local backup="$CONFIG_DIR/bhttp-performance.backup"
   local state_file="$CONFIG_DIR/bhttp-performance.state"
@@ -1202,6 +1475,12 @@ panel_estado(){
   fila_panel "BHTTP" "$(estado_servicio "$SERVICE")  ${GRAY}Puerto${RESET} ${NEON_GREEN}${PUERTO}${RESET}"
   fila_panel "BadVPN UDP" "$(estado_servicio "$BADVPN_SERVICE")  ${GRAY}Puerto${RESET} ${NEON_GREEN}${BADVPN_PORT}${RESET}"
   fila_panel "SSH backend" "${GRAY}Puerto${RESET} ${NEON_GREEN}${SSHPORT}${RESET}"
+  cargar_wspy
+  if [ -f "$WSPY_UNIT" ]; then
+    fila_panel "WS→SSH (python)" "$(estado_servicio "$WSPY_SERVICE")  ${GRAY}Puerto${RESET} ${NEON_GREEN}${WSPORT}${RESET}"
+  else
+    fila_panel "WS→SSH (python)" "${GRAY}○ No instalado (Opción 12)${RESET}"
+  fi
   echo -e "  ${NEON_BLUE}├─ ${WHITE}${BOLD}USUARIOS${RESET} ${NEON_BLUE}─────────────────────────────────────────────────${RESET}"
   fila_panel "Registrados" "${WHITE}${BOLD}${TOTAL_U}${RESET}   ${NEON_GREEN}🟢 En línea:${RESET} ${WHITE}${BOLD}${ONLINE_U}${RESET}   ${NEON_ORANGE}📱 Dispositivos:${RESET} ${WHITE}${BOLD}${TOTAL_C}${RESET}"
   echo -e "  ${NEON_BLUE}├─ ${WHITE}${BOLD}AUTOMATIZACIÓN${RESET} ${NEON_BLUE}───────────────────────────────────────────${RESET}"
@@ -1498,227 +1777,6 @@ destruir_script_total(){
   exit 0
 }
 
-instalar_proxy_websocket(){
-  titulo
-  seccion "PROXY WEBSOCKET → SSH (PYTHON)"
-
-  local sugerido="${WS_PORT:-8080}" nuevo_puerto ocupado
-  echo -e "  ${WHITE}El proxy aceptará WebSocket en un puerto público y lo enviará a:${RESET} ${NEON_GREEN}127.0.0.1:22${RESET}"
-  echo -e "  ${GRAY}BHTTP no se reinicia ni se modifica.${RESET}"
-  read -r -p "$(echo -e " ${NEON_ORANGE}◆${RESET} Puerto WebSocket (Enter mantiene $sugerido): ")" nuevo_puerto
-  [ -z "$nuevo_puerto" ] && nuevo_puerto="$sugerido"
-  if ! [[ "$nuevo_puerto" =~ ^[0-9]+$ ]] || [ "$nuevo_puerto" -lt 1 ] || [ "$nuevo_puerto" -gt 65535 ]; then
-    fail "Puerto inválido."
-    pausa; return 1
-  fi
-  if [ "$nuevo_puerto" = "$PUERTO" ]; then
-    fail "El puerto $nuevo_puerto ya pertenece a BHTTP. Elige otro puerto."
-    pausa; return 1
-  fi
-  if [ "$nuevo_puerto" = "22" ]; then
-    fail "El puerto 22 está reservado para OpenSSH. Elige otro puerto público."
-    pausa; return 1
-  fi
-  ocupado="$(ss -Hlnpt "sport = :$nuevo_puerto" 2>/dev/null || true)"
-  if [ -n "$ocupado" ]; then
-    fail "El puerto $nuevo_puerto ya está en uso. No se modificó ningún servicio."
-    pausa; return 1
-  fi
-
-  if ! command -v python3 >/dev/null 2>&1; then
-    apt-get update -y >/dev/null 2>&1 || true
-    apt-get install -y python3 >/dev/null 2>&1 || { fail "No se pudo instalar Python 3."; pausa; return 1; }
-  fi
-  if ! command -v sshd >/dev/null 2>&1; then
-    apt-get update -y >/dev/null 2>&1 || true
-    apt-get install -y openssh-server >/dev/null 2>&1 || { fail "No se pudo instalar OpenSSH."; pausa; return 1; }
-  fi
-  systemctl enable --now ssh 2>/dev/null || systemctl enable --now sshd 2>/dev/null || true
-  if ! ss -Hlnpt "sport = :22" 2>/dev/null | grep -q .; then
-    fail "OpenSSH no está escuchando en el puerto 22; el proxy no se instalará."
-    pausa; return 1
-  fi
-
-  mkdir -p "$WS_DIR"
-  cat > "$WS_SERVER_PY" <<'PYEOF'
-#!/usr/bin/env python3
-"""Puente WebSocket RFC 6455 hacia el SSH local. Sin dependencias externas."""
-import argparse
-import asyncio
-import base64
-import hashlib
-
-TARGET_HOST = "127.0.0.1"
-TARGET_PORT = 22
-MAX_HTTP = 16384
-MAX_FRAME = 16 * 1024 * 1024
-
-def ws_frame(opcode, payload=b""):
-    size = len(payload)
-    first = bytes([0x80 | opcode])
-    if size < 126:
-        return first + bytes([size]) + payload
-    if size < (1 << 16):
-        return first + bytes([126]) + size.to_bytes(2, "big") + payload
-    return first + bytes([127]) + size.to_bytes(8, "big") + payload
-
-async def read_frame(reader):
-    header = await reader.readexactly(2)
-    fin, opcode = bool(header[0] & 0x80), header[0] & 0x0F
-    if header[0] & 0x70:
-        raise ValueError("RSV no admitido")
-    masked = bool(header[1] & 0x80)
-    length = header[1] & 0x7F
-    if length == 126:
-        length = int.from_bytes(await reader.readexactly(2), "big")
-    elif length == 127:
-        length = int.from_bytes(await reader.readexactly(8), "big")
-    if length > MAX_FRAME:
-        raise ValueError("trama demasiado grande")
-    if not masked:
-        raise ValueError("cliente sin máscara")
-    key = await reader.readexactly(4)
-    data = bytearray(await reader.readexactly(length))
-    for i in range(length):
-        data[i] ^= key[i % 4]
-    return fin, opcode, bytes(data)
-
-async def client_to_ssh(client_reader, client_writer, ssh_writer):
-    data_opcode = None
-    while True:
-        fin, opcode, data = await read_frame(client_reader)
-        if opcode in (0x8, 0x9, 0xA):
-            if not fin or len(data) > 125:
-                raise ValueError("trama de control inválida")
-            if opcode == 0x8:
-                client_writer.write(ws_frame(0x8, data[:125]))
-                await client_writer.drain()
-                return
-            if opcode == 0x9:
-                client_writer.write(ws_frame(0xA, data))
-                await client_writer.drain()
-            continue
-        if opcode == 0x2:
-            if data_opcode is not None:
-                raise ValueError("fragmentación inválida")
-            data_opcode = 0x2 if not fin else None
-        elif opcode == 0x0:
-            if data_opcode != 0x2:
-                raise ValueError("continuación inesperada")
-            if fin:
-                data_opcode = None
-        else:
-            raise ValueError("solo se admiten mensajes binarios")
-        if data:
-            ssh_writer.write(data)
-            await ssh_writer.drain()
-
-async def ssh_to_client(ssh_reader, client_writer):
-    while True:
-        data = await ssh_reader.read(65536)
-        if not data:
-            return
-        client_writer.write(ws_frame(0x2, data))
-        await client_writer.drain()
-
-async def handle(client_reader, client_writer):
-    ssh_writer = None
-    try:
-        request = await asyncio.wait_for(client_reader.readuntil(b"\r\n\r\n"), 15)
-        if len(request) > MAX_HTTP:
-            raise ValueError("cabecera demasiado grande")
-        lines = request.decode("iso-8859-1").split("\r\n")
-        if not lines or not lines[0].startswith("GET "):
-            raise ValueError("se requiere GET")
-        headers = {}
-        for line in lines[1:]:
-            if ":" in line:
-                key, value = line.split(":", 1)
-                headers[key.strip().lower()] = value.strip()
-        if headers.get("upgrade", "").lower() != "websocket" or "upgrade" not in headers.get("connection", "").lower():
-            raise ValueError("se requiere Upgrade: websocket")
-        key = headers.get("sec-websocket-key", "")
-        if not key:
-            raise ValueError("falta Sec-WebSocket-Key")
-        accept = base64.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
-        ssh_reader, ssh_writer = await asyncio.wait_for(asyncio.open_connection(TARGET_HOST, TARGET_PORT), 10)
-        response = (
-            "HTTP/1.1 101 Switching Protocols\r\n"
-            "Upgrade: websocket\r\n"
-            "Connection: Upgrade\r\n"
-            f"Sec-WebSocket-Accept: {accept}\r\n\r\n"
-        ).encode()
-        client_writer.write(response)
-        await client_writer.drain()
-        incoming = asyncio.create_task(client_to_ssh(client_reader, client_writer, ssh_writer))
-        outgoing = asyncio.create_task(ssh_to_client(ssh_reader, client_writer))
-        done, pending = await asyncio.wait((incoming, outgoing), return_when=asyncio.FIRST_COMPLETED)
-        for task in pending:
-            task.cancel()
-        await asyncio.gather(*pending, return_exceptions=True)
-        for task in done:
-            task.result()
-    except (asyncio.IncompleteReadError, ConnectionError, asyncio.TimeoutError, ValueError):
-        pass
-    finally:
-        if ssh_writer:
-            ssh_writer.close()
-            try:
-                await ssh_writer.wait_closed()
-            except Exception:
-                pass
-        client_writer.close()
-        try:
-            await client_writer.wait_closed()
-        except Exception:
-            pass
-
-async def main(port):
-    server = await asyncio.start_server(handle, "0.0.0.0", port, limit=MAX_HTTP)
-    async with server:
-        await server.serve_forever()
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, required=True)
-    args = parser.parse_args()
-    asyncio.run(main(args.port))
-PYEOF
-  chmod 700 "$WS_SERVER_PY"
-  cat > "$WS_CONFIG" <<EOF
-WS_PORT=$nuevo_puerto
-EOF
-  chmod 600 "$WS_CONFIG"
-  cat > "$WS_UNIT" <<EOF
-[Unit]
-Description=WebSocket to local OpenSSH proxy
-After=network-online.target ssh.service
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/python3 $WS_SERVER_PY --port $nuevo_puerto
-Restart=on-failure
-RestartSec=3
-NoNewPrivileges=true
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-  systemctl daemon-reload
-  systemctl enable --now ssh-ws-proxy.service || { fail "No se pudo iniciar el proxy. Revisa: journalctl -u ssh-ws-proxy"; pausa; return 1; }
-  if ! systemctl is-active --quiet ssh-ws-proxy.service; then
-    fail "El proxy no quedó activo. Revisa: journalctl -u ssh-ws-proxy"
-    pausa; return 1
-  fi
-  WS_PORT="$nuevo_puerto"
-  abrir_puerto_sistema "$WS_PORT"
-  ok "Proxy WebSocket activo en el puerto $WS_PORT → 127.0.0.1:22."
-  info "Usa WebSocket binario; la respuesta de actualización es HTTP 101."
-  pausa
-}
-
 fila_menu(){
   # $1 num izq, $2 texto izq, $3 num der, $4 texto der, $5 color (opcional)
   local c="${5:-$NEON_GREEN}" t="$2" pad
@@ -1747,7 +1805,9 @@ menu_principal(){
     fila_menu 5 "BadVPN Gateway" 6 "Actualizar desde GitHub"
     fila_menu 7 "Liberar memoria RAM" 8 "Auto iniciar script"
     fila_menu 9 "Optimización automática" 10 "BHTTP BBR (red)"
-    fila_menu 11 "Destrucción total" 0 "Salir" "$RED"
+    fila_menu 11 "Destrucción total" 12 "WebSocket SSH (proxy python)"
+    linea
+    echo -e "  ${RED}[ 0]${RESET} Salir"
     linea
     read -r -p "$(echo -e " ${NEON_ORANGE}◆${RESET} Opción: ")" opc
     case "$opc" in
@@ -1769,6 +1829,7 @@ menu_principal(){
       9) menu_optimizacion_automatica ;;
       10) menu_bhttp_bbr ;;
       11) destruir_script_total ;;
+      12) menu_proxy_python ;;
       0) clear_screen; exit 0 ;;
       *) fail "Opción inválida."; pausa ;;
     esac
@@ -1777,4 +1838,5 @@ menu_principal(){
 
 check_root
 cargar_config
+cargar_wspy
 menu_principal
